@@ -86,6 +86,23 @@ streams to Wawona over vsock. Exposed as `nixosConfigurations.wawona-container-g
 This is the execution backend for iOS/iPadOS/visionOS/tvOS (QEMU-TCTI) and one of
 the two Android paths.
 
+## Native `container` CLI (scaffold)
+
+Wawona's native terminals + [`wwn-zsh`](../wwn-zsh) must expose a first-class
+`container` command so a user can **manage and run OCI containers from a shell on
+every target** (the whole Apple ecosystem + Android) and boot them from inside
+native clients like on a real computer. It is the terminal front-end to the same
+substrate the GUI uses (Settings → Containers, Machine profile → Containers) —
+`wwn-oci` for image management plus the per-target execution backend.
+
+- Scaffold: `dependencies/containers/cli/container-cli.nix` → the `container-cli`
+  flake package (`nix run .#container-cli -- --help`) and the `container-cli`
+  registry entry (per-target, cross-built later). The command surface exists now;
+  every subcommand is a stub that exits non-zero.
+- **Requirement of record + design:**
+  [`Wawona/docs/2026-container-cli.md`](https://github.com/Wawona/Wawona/blob/main/docs/2026-container-cli.md).
+  **Not implemented yet** — scaffold only.
+
 ## Android rootless backend (proot)
 
 `dependencies/containers/android/proot-runner.nix` runs a `wwn-oci`-unpacked
@@ -103,6 +120,9 @@ compliant.
 4. Android rootless proot/namespace backend.
 5. Replace `dependencies/containers/stub.nix` with per-platform derivations;
    expose `oci-image-*` and `oci-runtime-*` packages.
+6. Native `container` CLI (wwn-zsh / native terminals) over `wwn-oci` + the
+   per-target execution backend, on every target. Scaffolded; see
+   `Wawona/docs/2026-container-cli.md`.
 
 ## Convention
 

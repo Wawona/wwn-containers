@@ -29,3 +29,13 @@ execution is gated on whether a Linux kernel can legally run.
   root and no JIT.
 - **No downloaded executables on Apple targets.** Guest kernels/rootfs and the
   runtime are bundled resources; only OCI *image data* is fetched at runtime.
+
+## Native `container` CLI
+
+The `container` command (wwn-zsh / native terminals) is a front-end over the same
+substrate, so it inherits every rule above. Image-management subcommands
+(`pull`/`images`/`inspect`/`rmi`) are available on **all** targets; lifecycle
+subcommands (`run`/`exec`/...) are gated by the Execution column of the matrix and
+must fail cleanly (never fake execution) where no kernel is available (watchOS,
+Mac App Store). See [Wawona/docs/2026-container-cli.md](https://github.com/Wawona/Wawona/blob/main/docs/2026-container-cli.md).
+Scaffold only — not implemented yet.

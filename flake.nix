@@ -48,6 +48,11 @@
         let pkgs = pkgsFor system; in {
           wwn-oci = pkgs.callPackage ./dependencies/containers/oci-core.nix { };
           default = pkgs.callPackage ./dependencies/containers/oci-core.nix { };
+          # Native `container` CLI (SCAFFOLD): the command Wawona's native
+          # terminals + wwn-zsh expose to manage/run containers on every target.
+          # Command surface only for now; subcommands stubbed. Design:
+          # Wawona/docs/2026-container-cli.md.
+          container-cli = pkgs.callPackage ./dependencies/containers/cli/container-cli.nix { };
         } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
           # macOS execution backend (Apple Containerization framework). Pure
           # staging; compiled on first run via host Swift (see containerd-bridge.nix).
@@ -66,6 +71,19 @@
           wearos = dir + "/stub.nix";
         };
         oci-runtime = withPlatformVariants {
+          macos = dir + "/stub.nix";
+          ios = dir + "/stub.nix";
+          ipados = dir + "/stub.nix";
+          tvos = dir + "/stub.nix";
+          visionos = dir + "/stub.nix";
+          watchos = dir + "/stub.nix";
+          android = dir + "/stub.nix";
+          wearos = dir + "/stub.nix";
+        };
+        # Native `container` CLI, cross-compiled per target (SCAFFOLD). The
+        # macOS/dev scaffold is the `container-cli` flake package; per-target
+        # builds land here later. See Wawona/docs/2026-container-cli.md.
+        container-cli = withPlatformVariants {
           macos = dir + "/stub.nix";
           ios = dir + "/stub.nix";
           ipados = dir + "/stub.nix";
