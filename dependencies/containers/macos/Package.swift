@@ -18,10 +18,12 @@ let package = Package(
         .executableTarget(
             name: "wwn-containerd",
             dependencies: [
+                // ContainerizationError ships inside the Containerization library
+                // product (its own module, not a separate product), so importing
+                // `ContainerizationError` works without listing it here.
                 .product(name: "Containerization", package: "containerization"),
                 .product(name: "ContainerizationOCI", package: "containerization"),
                 .product(name: "ContainerizationOS", package: "containerization"),
-                .product(name: "ContainerizationError", package: "containerization"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         )

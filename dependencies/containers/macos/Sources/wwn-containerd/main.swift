@@ -121,8 +121,8 @@ extension WWNContainerd {
                 // WAYLAND_DISPLAY/XDG_RUNTIME_DIR so a GUI app in-guest talks to
                 // the waypipe server we expect to run on the vsock port below.
                 if port != 0 {
-                    config.process.environment.append("WAYLAND_DISPLAY=wayland-0")
-                    config.process.environment.append("XDG_RUNTIME_DIR=/run/user/0")
+                    config.process.environmentVariables.append("WAYLAND_DISPLAY=wayland-0")
+                    config.process.environmentVariables.append("XDG_RUNTIME_DIR=/run/user/0")
                 }
             }
 
