@@ -26,9 +26,29 @@ Two layers:
      lighter workloads.
    - **watchOS**: image management only; no execution.
 
-> **Status: SKELETON.** Flake + `registryFragment` + this port plan +
-> `COMPLIANCE.md`. Build stubs (`dependencies/containers/stub.nix`) fail with a
-> clear message. Real backends are downstream.
+> **Status: OCI core landed; execution backends downstream.** The universal
+> image-management core (`wwn-oci`, Rust) is implemented and builds/unit-tests as
+> `nix build .#wwn-oci` (registry v2 pull + token auth, digest-verified CAS
+> store, OCI/Docker manifest+index parse with platform selection, layer unpack
+> with whiteouts). Execution backends (`dependencies/containers/stub.nix`) still
+> `throw` until they land.
+
+## wwn-oci (the OCI core)
+
+Rust crate at `dependencies/containers/oci-core`:
+
+- `reference` - image reference parsing (Docker Hub `library/` + `:latest`
+  defaults, custom registries, `@digest` pinning).
+- `registry` - Registry v2 client: `WWW-Authenticate` Bearer token negotiation,
+  manifest/index fetch with `Docker-Content-Digest` capture, streaming blob GET.
+- `digest` - `sha256:` parse + streaming verification (`Sha256Reader`).
+- `store` - content-addressable blob store (`blobs/<algo>/<hex>`, atomic
+  digest-verified writes).
+- `spec` - OCI + Docker image-spec types and media-type constants.
+- `unpack` - apply layers to a rootfs with OCI whiteout (`.wh.`, opaque) handling
+  and path-traversal guards.
+
+CLI: `wwn-oci pull alpine:3.20 --dest ./img`, `wwn-oci resolve <ref>`.
 
 ## Why depend on wwn-vms
 

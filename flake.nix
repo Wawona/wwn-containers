@@ -42,6 +42,15 @@
       #                userspace, no exec -> available on EVERY target incl. iOS/watchOS.
       #   oci-runtime  the per-target execution backend (containerization.framework
       #                on macOS, container-in-VM on mobile, QEMU/proot on Android).
+      # The universal OCI core (wwn-oci) as a first-class package per system, so
+      # Wawona and CI can build + unit-test it directly (phase 3). Cross-compiled
+      # target variants land via wwn-toolchain later.
+      packages = forAll (system:
+        let pkgs = pkgsFor system; in {
+          wwn-oci = pkgs.callPackage ./dependencies/containers/oci-core.nix { };
+          default = pkgs.callPackage ./dependencies/containers/oci-core.nix { };
+        });
+
       registryFragment = {
         oci-image = withPlatformVariants {
           macos = dir + "/stub.nix";
