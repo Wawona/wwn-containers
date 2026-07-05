@@ -78,6 +78,17 @@
         };
       };
 
+      # Container-in-VM guest: the wwn-vms mobile NixOS guest extended with an
+      # in-guest OCI runtime (crun/podman) that runs a host-provided OCI bundle
+      # and streams its Wayland session to Wawona over vsock+waypipe. This is the
+      # execution backend for every non-macOS target (iOS/iPadOS/visionOS/tvOS/
+      # Android). Evaluable; artifacts build on the aarch64-linux builder.
+      nixosConfigurations.wawona-container-guest =
+        import "${wwn-vms}/dependencies/vms/mobile/guest.nix" {
+          inherit nixpkgs;
+          extraModule = ./dependencies/containers/container-in-vm/guest-module.nix;
+        };
+
       formatter = forAll (system: (pkgsFor system).nixfmt-rfc-style);
     };
 }

@@ -76,6 +76,16 @@ alone.
   `wwn-toolchain`, matches Wawona's Rust core).
 - **Swift** for the macOS `containerization.framework` bridge.
 
+## Container-in-VM (non-macOS execution)
+
+`dependencies/containers/container-in-vm/guest-module.nix` extends the `wwn-vms`
+mobile NixOS guest with an in-guest OCI runtime (crun/podman). The host shares an
+OCI bundle (produced by `wwn-oci`) into the guest over virtiofs; the guest runs
+it with `crun` against a headless cage compositor whose framebuffer waypipe
+streams to Wawona over vsock. Exposed as `nixosConfigurations.wawona-container-guest`.
+This is the execution backend for iOS/iPadOS/visionOS/tvOS (QEMU-TCTI) and one of
+the two Android paths.
+
 ## Port plan
 
 1. OCI core in Rust: pull/auth/digest-verify, CAS layer store, manifest/config
