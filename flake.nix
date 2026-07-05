@@ -9,11 +9,10 @@
     wwn-toolchain.inputs.nixpkgs.follows = "nixpkgs";
     wwn-toolchain.inputs.rust-overlay.follows = "rust-overlay";
     # Containers on every non-macOS target need a Linux kernel, which only a VM
-    # provides -> wwn-containers depends on wwn-vms. Local absolute path input
-    # while both repos are pre-release (switched to github:Wawona/wwn-vms once
-    # stable - see push-repos). Wawona overrides this via `follows` so its own
-    # wwn-vms input is the single source of truth for integrated builds.
-    wwn-vms.url = "path:/Users/8amps/Wawona/wwn-vms";
+    # provides -> wwn-containers depends on wwn-vms (github:Wawona/wwn-vms).
+    # Wawona overrides this via `follows` so its own wwn-vms input is the single
+    # source of truth for integrated builds.
+    wwn-vms.url = "github:Wawona/wwn-vms";
     wwn-vms.inputs.nixpkgs.follows = "nixpkgs";
     wwn-vms.inputs.rust-overlay.follows = "rust-overlay";
     wwn-vms.inputs.wwn-toolchain.follows = "wwn-toolchain";
