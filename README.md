@@ -50,6 +50,18 @@ Rust crate at `dependencies/containers/oci-core`:
 
 CLI: `wwn-oci pull alpine:3.20 --dest ./img`, `wwn-oci resolve <ref>`.
 
+## macOS execution backend (wwn-containerd)
+
+`dependencies/containers/macos` is a SwiftPM package (`wwn-containerd`) built on
+Apple's [Containerization](https://github.com/apple/containerization) framework:
+each container runs in its own lightweight VM with `vminitd` (gRPC over vsock).
+`nix build .#wwn-containerd` stages the sources purely; the actual `swift build`
+(which fetches apple/containerization and needs the macOS 15+ SDK) + ad-hoc
+codesign with `com.apple.security.virtualization` happen on first run via the
+host Swift toolchain - the same runtime-compile model as wwn-vms' `vz-launcher`.
+Direct/notarized channel only (not Mac App Store viable). `--wayland-vsock-port`
+forwards the guest's waypipe server into Wawona.
+
 ## Why depend on wwn-vms
 
 A real container needs a Linux kernel. On macOS Apple provides one per container

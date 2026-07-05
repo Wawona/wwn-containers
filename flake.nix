@@ -49,7 +49,11 @@
         let pkgs = pkgsFor system; in {
           wwn-oci = pkgs.callPackage ./dependencies/containers/oci-core.nix { };
           default = pkgs.callPackage ./dependencies/containers/oci-core.nix { };
-        });
+        } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+          # macOS execution backend (Apple Containerization framework). Pure
+          # staging; compiled on first run via host Swift (see containerd-bridge.nix).
+          wwn-containerd = pkgs.callPackage ./dependencies/containers/macos/containerd-bridge.nix { };
+        }));
 
       registryFragment = {
         oci-image = withPlatformVariants {
