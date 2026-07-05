@@ -185,6 +185,23 @@
         "type": "github"
       }
     },
+    "wwn-utm": {
+      "inputs": {
+        "nixpkgs": [
+          "wwn-vms",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "narHash": "sha256-5jAp/HL3og+HaCJhOYPPGCjXy1rM3Or7T929Y1fCz3w=",
+        "path": "/Users/8amps/Wawona/UTM",
+        "type": "path"
+      },
+      "original": {
+        "path": "/Users/8amps/Wawona/UTM",
+        "type": "path"
+      }
+    },
     "wwn-vms": {
       "inputs": {
         "microvm": "microvm",
@@ -196,10 +213,11 @@
         ],
         "wwn-toolchain": [
           "wwn-toolchain"
-        ]
+        ],
+        "wwn-utm": "wwn-utm"
       },
       "locked": {
-        "narHash": "sha256-RCSjHOidg0dRCBxFSrUY/T+fx8Eys7hXXzYuE0mQZ7k=",
+        "narHash": "sha256-b4AupZDVm38Vc/KPXPVFqzdSOiGV+/51Q5b4lu9WKHg=",
         "path": "/Users/8amps/Wawona/wwn-vms",
         "type": "path"
       },

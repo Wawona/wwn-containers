@@ -89,6 +89,13 @@
           extraModule = ./dependencies/containers/container-in-vm/guest-module.nix;
         };
 
+      # Per-target container capability matrix (with eval-time invariant
+      # asserts, incl. the cross-dep "exec needs a kernel" check against
+      # wwn-vms). `nix eval .#lib.capabilities` is the container capability lane.
+      lib.capabilities = import ./capabilities.nix {
+        vmsCapabilities = wwn-vms.lib.capabilities;
+      };
+
       formatter = forAll (system: (pkgsFor system).nixfmt-rfc-style);
     };
 }
