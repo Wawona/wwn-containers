@@ -86,6 +86,14 @@ streams to Wawona over vsock. Exposed as `nixosConfigurations.wawona-container-g
 This is the execution backend for iOS/iPadOS/visionOS/tvOS (QEMU-TCTI) and one of
 the two Android paths.
 
+## Android rootless backend (proot)
+
+`dependencies/containers/android/proot-runner.nix` runs a `wwn-oci`-unpacked
+rootfs **rootless + jitless** via proot (ptrace chroot, Termux model) - the
+lighter Android path when full VM isolation isn't required. The heavier path is
+container-in-VM via the `wwn-vms` Android QEMU engine. Both are Play-Store
+compliant.
+
 ## Port plan
 
 1. OCI core in Rust: pull/auth/digest-verify, CAS layer store, manifest/config
