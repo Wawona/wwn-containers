@@ -1,0 +1,14 @@
+/Users/8amps/Wawona/wwn-containers/dependencies/containers/oci-core/target/release/deps/thiserror-e4d384624f0b7665.d: /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/8amps/Wawona/wwn-containers/dependencies/containers/oci-core/target/release/build/thiserror-8eb925878a1e8974/out/private.rs
+
+/Users/8amps/Wawona/wwn-containers/dependencies/containers/oci-core/target/release/deps/libthiserror-e4d384624f0b7665.rlib: /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/8amps/Wawona/wwn-containers/dependencies/containers/oci-core/target/release/build/thiserror-8eb925878a1e8974/out/private.rs
+
+/Users/8amps/Wawona/wwn-containers/dependencies/containers/oci-core/target/release/deps/libthiserror-e4d384624f0b7665.rmeta: /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/8amps/Wawona/wwn-containers/dependencies/containers/oci-core/target/release/build/thiserror-8eb925878a1e8974/out/private.rs
+
+/Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs:
+/Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs:
+/Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs:
+/Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs:
+/Users/8amps/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs:
+/Users/8amps/Wawona/wwn-containers/dependencies/containers/oci-core/target/release/build/thiserror-8eb925878a1e8974/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/8amps/Wawona/wwn-containers/dependencies/containers/oci-core/target/release/build/thiserror-8eb925878a1e8974/out

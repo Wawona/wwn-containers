@@ -14,6 +14,7 @@
 //! The [`pull`] entry point ties them together: resolve -> verify -> store ->
 //! (optionally) unpack a rootfs.
 
+pub mod catalog;
 pub mod digest;
 pub mod error;
 pub mod reference;

@@ -45,18 +45,26 @@
       # Wawona and CI can build + unit-test it directly (phase 3). Cross-compiled
       # target variants land via wwn-toolchain later.
       packages = forAll (system:
-        let pkgs = pkgsFor system; in {
+        let
+          pkgs = pkgsFor system;
           wwn-oci = pkgs.callPackage ./dependencies/containers/oci-core.nix { };
-          default = pkgs.callPackage ./dependencies/containers/oci-core.nix { };
-          # Native `container` CLI (SCAFFOLD): the command Wawona's native
-          # terminals + wwn-zsh expose to manage/run containers on every target.
-          # Command surface only for now; subcommands stubbed. Design:
-          # Wawona/docs/2026-container-cli.md.
-          container-cli = pkgs.callPackage ./dependencies/containers/cli/container-cli.nix { };
+          wwn-containerd =
+            if pkgs.stdenv.isDarwin
+            then pkgs.callPackage ./dependencies/containers/macos/containerd-bridge.nix { }
+            else null;
+        in {
+          inherit wwn-oci;
+          default = wwn-oci;
+          # Native `container` CLI: image management (pull/images/rmi/inspect)
+          # via wwn-oci everywhere; `run` via wwn-containerd on macOS. Remaining
+          # lifecycle verbs (exec/ps/...) tracked in Wawona/docs/2026-container-cli.md.
+          container-cli = pkgs.callPackage ./dependencies/containers/cli/container-cli.nix {
+            inherit wwn-oci wwn-containerd;
+          };
         } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
           # macOS execution backend (Apple Containerization framework). Pure
           # staging; compiled on first run via host Swift (see containerd-bridge.nix).
-          wwn-containerd = pkgs.callPackage ./dependencies/containers/macos/containerd-bridge.nix { };
+          inherit wwn-containerd;
         }));
 
       registryFragment = {
