@@ -67,39 +67,41 @@
           inherit wwn-containerd;
         }));
 
-      registryFragment = {
+      registryFragment = let
+        reg = dir + "/registry";
+        mobile = reg + "/oci-runtime-mobile.nix";
+        imageOnly = reg + "/oci-runtime-image-only.nix";
+        ociImage = reg + "/oci-image.nix";
+      in {
         oci-image = withPlatformVariants {
-          macos = dir + "/stub.nix";
-          ios = dir + "/stub.nix";
-          ipados = dir + "/stub.nix";
-          tvos = dir + "/stub.nix";
-          visionos = dir + "/stub.nix";
-          watchos = dir + "/stub.nix";
-          android = dir + "/stub.nix";
-          wearos = dir + "/stub.nix";
+          macos = ociImage;
+          ios = ociImage;
+          ipados = ociImage;
+          tvos = ociImage;
+          visionos = ociImage;
+          watchos = ociImage;
+          android = ociImage;
+          wearos = ociImage;
         };
         oci-runtime = withPlatformVariants {
-          macos = dir + "/stub.nix";
-          ios = dir + "/stub.nix";
-          ipados = dir + "/stub.nix";
-          tvos = dir + "/stub.nix";
-          visionos = dir + "/stub.nix";
-          watchos = dir + "/stub.nix";
-          android = dir + "/stub.nix";
-          wearos = dir + "/stub.nix";
+          macos = reg + "/oci-runtime-macos.nix";
+          ios = mobile;
+          ipados = mobile;
+          tvos = mobile;
+          visionos = mobile;
+          watchos = imageOnly;
+          android = reg + "/oci-runtime-android.nix";
+          wearos = imageOnly;
         };
-        # Native `container` CLI, cross-compiled per target (SCAFFOLD). The
-        # macOS/dev scaffold is the `container-cli` flake package; per-target
-        # builds land here later. See Wawona/docs/2026-container-cli.md.
         container-cli = withPlatformVariants {
-          macos = dir + "/stub.nix";
-          ios = dir + "/stub.nix";
-          ipados = dir + "/stub.nix";
-          tvos = dir + "/stub.nix";
-          visionos = dir + "/stub.nix";
-          watchos = dir + "/stub.nix";
-          android = dir + "/stub.nix";
-          wearos = dir + "/stub.nix";
+          macos = reg + "/container-cli.nix";
+          ios = reg + "/container-cli.nix";
+          ipados = reg + "/container-cli.nix";
+          tvos = reg + "/container-cli.nix";
+          visionos = reg + "/container-cli.nix";
+          watchos = reg + "/container-cli.nix";
+          android = reg + "/container-cli.nix";
+          wearos = reg + "/container-cli.nix";
         };
       };
 
