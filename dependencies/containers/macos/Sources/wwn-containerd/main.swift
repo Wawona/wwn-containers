@@ -50,6 +50,13 @@ extension WWNContainerd {
         @Option(name: [.customLong("kernel"), .customShort("k")], help: "Linux kernel image path")
         var kernel: String
 
+        // Path to a prebuilt vminitd ext4 initfs (the guest PID 1). When set, the
+        // manager mounts it directly instead of resolving the `vminit:latest`
+        // image from the local content store — so wwn-containers can ship/build
+        // the initfs and boot self-contained (no pre-seeded ImageStore needed).
+        @Option(name: .customLong("initfs"), help: "Path to a prebuilt vminitd ext4 initfs (bundled). If unset, resolves 'vminit:latest' from the local image store.")
+        var initfs: String?
+
         @Option(name: [.customLong("cpus"), .customShort("c")], help: "vCPUs")
         var cpus: Int = 2
 
@@ -93,12 +100,28 @@ extension WWNContainerd {
                 network = nil
             }
 
-            var manager = try await ContainerManager(
-                kernel: kernel,
-                initfsReference: "vminit:latest",
-                network: network,
-                rosetta: rosetta
-            )
+            var manager: ContainerManager
+            if let initfsPath = initfs {
+                let initMount = Mount.block(
+                    format: "ext4",
+                    source: initfsPath,
+                    destination: "/",
+                    options: ["ro"]
+                )
+                manager = try ContainerManager(
+                    kernel: kernel,
+                    initfs: initMount,
+                    network: network,
+                    rosetta: rosetta
+                )
+            } else {
+                manager = try await ContainerManager(
+                    kernel: kernel,
+                    initfsReference: "vminit:latest",
+                    network: network,
+                    rosetta: rosetta
+                )
+            }
 
             let current = try Terminal.current
             try current.setraw()
