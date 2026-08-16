@@ -7,8 +7,8 @@ execution is gated on whether a Linux kernel can legally run.
 | --- | --- | --- | --- | --- |
 | macOS (direct/notarized) | Yes | Yes | Apple `containerization.framework` (per-container VM) or container-in-`wwn-vms` | Direct/notarized. Needs `com.apple.security.virtualization`. |
 | macOS (Mac App Store) | Yes | **No** | - | Image management only (pure userspace); execution needs VM spawning (forbidden under MAS). |
-| iOS | Yes | Yes | container-in-VM via `wwn-vms` QEMU-TCTI (crun/podman in-guest) | Image mgmt is pure userspace. Execution rides the compliant jitless VM; guest is bundled/ODR data. |
-| iPadOS | Yes | Yes | container-in-VM | Same as iOS. |
+| iOS | Yes | Yes (planned) | container-in-VM via `wwn-vms` **UTM-SE–class jitless** interpreter (crun/podman in-guest); OCI pull e.g. Docker Hub | Image mgmt is pure userspace. Execution = Apple Container idea without JIT. Not Wasm Runtime packages. |
+| iPadOS | Yes | Yes (planned) | container-in-VM (same as iOS) | Same as iOS. |
 | visionOS | Yes | Yes | container-in-VM | Same as iOS. |
 | tvOS | Yes | Limited | container-in-VM (minimal guest) | Tight RAM; may be image-management-only. |
 | watchOS | Yes | **No** | - | Image management only. No VM, so no execution. |
