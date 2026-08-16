@@ -1,0 +1,40 @@
+name: ci
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  readme-badge:
+    name: README CI badge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: README has CI status badge
+        run: grep -E 'actions/workflows/.+/badge\.svg' README.md
+
+  eval:
+    name: flake eval
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: capabilities lane
+        run: nix eval .#lib.capabilities
+      - name: darwin package names
+        run: nix eval .#packages.aarch64-darwin --apply builtins.attrNames
+      - name: apple-container is Darwin-only
+        run: |
+          nix eval .#packages.aarch64-darwin.apple-container.name
+          if nix eval .#packages.x86_64-linux.apple-container >/dev/null 2>&1; then
+            echo "apple-container must not exist on linux" >&2
+            exit 1
+          fi

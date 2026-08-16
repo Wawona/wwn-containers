@@ -1,5 +1,7 @@
 # wwn-containers
 
+[![CI](https://github.com/Wawona/wwn-containers/actions/workflows/ci.yml/badge.svg)](https://github.com/Wawona/wwn-containers/actions/workflows/ci.yml)
+
 Wawona's **OCI container substrate**, split out of the Wawona repo so container
 support is developed, versioned, and CI'd independently and consumed by Wawona as
 a flake input. Aligns with `wwn-toolchain` and depends on
