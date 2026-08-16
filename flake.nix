@@ -52,6 +52,13 @@
             if pkgs.stdenv.isDarwin
             then pkgs.callPackage ./dependencies/containers/macos/containerd-bridge.nix { }
             else null;
+          # Apple's `container` CLI + Containerization.framework. macOS only —
+          # never evaluate on iOS/Android/Linux (see apple-container-forbidden.nix
+          # and wwn-toolchain baseRegistry sentinels). Wawona/docs/wwn-repo-dag.md.
+          apple-container =
+            if pkgs.stdenv.isDarwin
+            then pkgs.callPackage ./dependencies/containers/macos/apple-container.nix { }
+            else null;
         in {
           inherit wwn-oci;
           default = wwn-oci;
@@ -65,6 +72,8 @@
           # macOS execution backend (Apple Containerization framework). Pure
           # staging; compiled on first run via host Swift (see containerd-bridge.nix).
           inherit wwn-containerd;
+          # Official Apple container CLI, deps locked with swiftpm2nix (v7).
+          inherit apple-container;
         }));
 
       registryFragment = let
@@ -102,6 +111,20 @@
           watchos = reg + "/container-cli.nix";
           android = reg + "/container-cli.nix";
           wearos = reg + "/container-cli.nix";
+        };
+        # Apple container CLI / Containerization.framework — macOS only.
+        # Other platforms throw (do not silently fall back). L3′ owns this key;
+        # wwn-toolchain baseRegistry sentinels reject it at L0.
+        apple-container = withPlatformVariants {
+          macos = reg + "/apple-container.nix";
+          ios = ./dependencies/containers/macos/apple-container-forbidden.nix;
+          ipados = ./dependencies/containers/macos/apple-container-forbidden.nix;
+          tvos = ./dependencies/containers/macos/apple-container-forbidden.nix;
+          watchos = ./dependencies/containers/macos/apple-container-forbidden.nix;
+          visionos = ./dependencies/containers/macos/apple-container-forbidden.nix;
+          android = ./dependencies/containers/macos/apple-container-forbidden.nix;
+          wearos = ./dependencies/containers/macos/apple-container-forbidden.nix;
+          linux = ./dependencies/containers/macos/apple-container-forbidden.nix;
         };
       };
 

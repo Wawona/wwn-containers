@@ -30,6 +30,8 @@ assert builtins.all (t: caps.${t}.ociImage) targets;
 assert caps.watchos.exec == false;
 # macOS uses Apple's per-container VM framework.
 assert caps.macos.backend == "containerization";
+# Apple Containerization.framework / apple `container` CLI is macOS-only.
+assert builtins.all (t: t == "macos" || caps.${t}.backend != "containerization") targets;
 # Cross-dep invariant: no execution without a kernel (Containerization or a VM).
 assert builtins.all execImpliesKernel targets;
 caps

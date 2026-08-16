@@ -50,6 +50,20 @@ Rust crate at `dependencies/containers/oci-core`:
 
 CLI: `wwn-oci pull alpine:3.20 --dest ./img`, `wwn-oci resolve <ref>`.
 
+## Apple `container` CLI (macOS only, swiftpm2nix)
+
+The official Apple [container](https://github.com/apple/container) CLI is
+packaged as `.#apple-container`. **macOS / Darwin only** — registry entries for
+every other platform throw. Build instructions, the insomnia-creator flake
+notes, and the v7-tolerant swiftpm2nix lock:
+
+[`docs/apple-container.md`](docs/apple-container.md)
+
+```bash
+nix build .#apple-container
+./result/bin/container --help
+```
+
 ## macOS execution backend (wwn-containerd)
 
 `dependencies/containers/macos` is a SwiftPM package (`wwn-containerd`) built on
