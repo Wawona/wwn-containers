@@ -1,41 +1,21 @@
 # wwn-containers App Store / platform compliance
 
-Honest, per-target posture. Image management is universal and always compliant;
-execution is gated on whether a Linux kernel can legally run.
+Honest, per-target posture. Full Mode A/B plan: [`docs/MODE-A-B.md`](./docs/MODE-A-B.md)
+and [Wawona `mode-a-b.md`](https://github.com/Wawona/Wawona/blob/development/docs/mode-a-b.md).
 
-| Target | OCI image mgmt | Execution | Backend | Store posture |
-| --- | --- | --- | --- | --- |
-| macOS (direct/notarized) | Yes | Yes | Apple `containerization.framework` (per-container VM) or container-in-`wwn-vms` | Direct/notarized. Needs `com.apple.security.virtualization`. |
-| macOS (Mac App Store) | Yes | **No** | - | Image management only (pure userspace); execution needs VM spawning (forbidden under MAS). |
-| iOS | Yes | Yes (planned) | container-in-VM via `wwn-vms` **UTM-SE–class jitless** interpreter (crun/podman in-guest); OCI pull e.g. Docker Hub | Image mgmt is pure userspace. Execution = Apple Container idea without JIT. Not Wasm Runtime packages. |
-| iPadOS | Yes | Yes (planned) | container-in-VM (same as iOS) | Same as iOS. |
-| visionOS | Yes | Yes | container-in-VM | Same as iOS. |
-| tvOS | Yes | Limited | container-in-VM (minimal guest) | Tight RAM; may be image-management-only. |
-| watchOS | Yes | **No** | - | Image management only. No VM, so no execution. |
-| Android | Yes | Yes | container-in-VM (QEMU/AVF) or rootless proot/namespaces | proot path is rootless + jitless; Play-Store compliant. |
+| Target | OCI image mgmt | Mode A execution | Mode B execution |
+| --- | --- | --- | --- |
+| macOS (direct) | Yes | Apple Containerization and/or container-in-`wwn-vms` | Same privileged channel |
+| macOS (MAS) | Yes | **No** | N/A |
+| iOS / iPadOS | Yes | container-in-VM on **jitless** UTM-SE/`wwn-vms` A | container-in-VM on **JIT** UTM (`wwn-vms` B) — **Sileo Mode B IPA only** |
+| visionOS / tvOS / watchOS | Yes (mgmt) | **No** run (forbidden machine kind / watch) | **No** |
+| Android | Yes | container-in-VM and/or rootless proot | Optional root Mode B |
 
 ## Hard rules
 
-- **Image management is universal and always compliant.** Pulling, verifying,
-  storing, and unpacking OCI images is pure userspace with no code execution, so
-  it ships on every target including iOS and watchOS.
-- **No execution without a kernel.** Running a container requires a Linux kernel:
-  Apple's `containerization.framework` on macOS, or a `wwn-vms` VM everywhere
-  else. Where no VM is allowed (watchOS, MAS), we ship image management only - we
-  do not fake execution.
-- **No JIT on Apple targets.** The container-in-VM path inherits `wwn-vms`'
-  jitless QEMU-TCTI on iOS/iPadOS/tvOS/visionOS.
-- **Rootless where possible.** The Android proot/user-namespace backend needs no
-  root and no JIT.
-- **No downloaded executables on Apple targets.** Guest kernels/rootfs and the
-  runtime are bundled resources; only OCI *image data* is fetched at runtime.
-
-## Native `container` CLI
-
-The `container` command (wwn-zsh / native terminals) is a front-end over the same
-substrate, so it inherits every rule above. Image-management subcommands
-(`pull`/`images`/`inspect`/`rmi`) are available on **all** targets; lifecycle
-subcommands (`run`/`exec`/...) are gated by the Execution column of the matrix and
-must fail cleanly (never fake execution) where no kernel is available (watchOS,
-Mac App Store). See [Wawona/docs/2026-container-cli.md](https://github.com/Wawona/Wawona/blob/main/docs/2026-container-cli.md).
-Scaffold only — not implemented yet.
+- Image management is universal and Mode A–safe.
+- **iOS Mode A run = jitless VM only.** Mode B JIT run never ships in App Store.
+- Design both backends in-tree; select by product flavor.
+- **No JIT on Apple Mode A.** Inherit `wwn-vms` Mode A ceiling.
+- Wasm Runtime packages (`wpm`) are a different product surface — not `container pull`.
+- Not a substitute for jailbreak APT on Mode B devices.

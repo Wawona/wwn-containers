@@ -20,9 +20,9 @@ Two layers:
      [`containerization.framework`](https://github.com/apple/containerization) -
      each container in a lightweight VM (`vminitd`, gRPC over vsock). Fallback:
      container-in-`wwn-vms` NixOS VM.
-   - **iOS / iPadOS / visionOS / tvOS**: **container-in-VM** - run the OCI rootfs
-     inside the `wwn-vms` QEMU-TCTI NixOS guest (crun/podman in-guest), surfaced
-     over vsock + waypipe.
+   - **iOS / iPadOS**: **Mode A** container-in-VM on jitless `wwn-vms`; **Mode B**
+     (Sileo Mode B IPA only) container-in-VM on JIT UTM — see
+     [`docs/MODE-A-B.md`](docs/MODE-A-B.md). Never ship Mode B in App Store.
    - **Android**: container-in-VM (QEMU) for full isolation, plus a rootless
      **proot / user-namespace** backend (Termux-style, no root, jitless) for
      lighter workloads.
