@@ -17,6 +17,7 @@
 pub mod catalog;
 pub mod digest;
 pub mod error;
+pub mod hub;
 pub mod reference;
 pub mod registry;
 pub mod spec;
@@ -48,8 +49,16 @@ impl TargetPlatform {
             "aarch64" => "arm64",
             other => other,
         };
-        let variant = if arch == "arm64" { Some("v8".to_string()) } else { None };
-        TargetPlatform { os: "linux".to_string(), arch: arch.to_string(), variant }
+        let variant = if arch == "arm64" {
+            Some("v8".to_string())
+        } else {
+            None
+        };
+        TargetPlatform {
+            os: "linux".to_string(),
+            arch: arch.to_string(),
+            variant,
+        }
     }
 
     fn matches(&self, p: &spec::Platform) -> bool {
@@ -180,11 +189,24 @@ fn select_platform<'a>(
         .manifests
         .iter()
         // Skip attestation/unknown entries that carry no usable platform.
-        .filter(|d| d.platform.as_ref().map(|p| p.os != "unknown").unwrap_or(false))
-        .find(|d| d.platform.as_ref().map(|p| platform.matches(p)).unwrap_or(false))
+        .filter(|d| {
+            d.platform
+                .as_ref()
+                .map(|p| p.os != "unknown")
+                .unwrap_or(false)
+        })
+        .find(|d| {
+            d.platform
+                .as_ref()
+                .map(|p| platform.matches(p))
+                .unwrap_or(false)
+        })
         .or_else(|| {
             // Fall back to the first real image manifest if nothing matched.
-            index.manifests.iter().find(|d| media_type::is_manifest(&d.media_type))
+            index
+                .manifests
+                .iter()
+                .find(|d| media_type::is_manifest(&d.media_type))
         })
         .ok_or_else(|| OciError::NoMatchingPlatform {
             os: platform.os.clone(),
