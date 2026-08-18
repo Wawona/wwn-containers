@@ -49,8 +49,12 @@ Rust crate at `dependencies/containers/oci-core`:
 - `spec` - OCI + Docker image-spec types and media-type constants.
 - `unpack` - apply layers to a rootfs with OCI whiteout (`.wh.`, opaque) handling
   and path-traversal guards.
+- `hub` - Docker Hub discovery client (search + tags). Hub's JSON API is not
+  part of the OCI distribution spec, so it lives apart from `registry`;
+  metadata-only HTTPS GET, no image data.
 
-CLI: `wwn-oci pull alpine:3.20 --dest ./img`, `wwn-oci resolve <ref>`.
+CLI: `wwn-oci pull alpine:3.20 --dest ./img`, `wwn-oci resolve <ref>`,
+`wwn-oci search python`, `wwn-oci tags python`.
 
 ## Apple `container` CLI (macOS only, swiftpm2nix)
 

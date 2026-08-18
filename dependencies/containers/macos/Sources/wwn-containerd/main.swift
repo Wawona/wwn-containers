@@ -51,11 +51,18 @@ extension WWNContainerd {
         var kernel: String
 
         // Path to a prebuilt vminitd ext4 initfs (the guest PID 1). When set, the
-        // manager mounts it directly instead of resolving the `vminit:latest`
-        // image from the local content store — so wwn-containers can ship/build
-        // the initfs and boot self-contained (no pre-seeded ImageStore needed).
-        @Option(name: .customLong("initfs"), help: "Path to a prebuilt vminitd ext4 initfs (bundled). If unset, resolves 'vminit:latest' from the local image store.")
+        // manager mounts it directly instead of resolving the vminit image from
+        // the Apple container system's image store — so wwn-containers can
+        // ship/build the initfs and boot self-contained (no pre-seeded store).
+        @Option(name: .customLong("initfs"), help: "Path to a prebuilt vminitd ext4 initfs (bundled). If unset, resolves the vminit image from the Apple container system's image store.")
         var initfs: String?
+
+        // Root of the Apple container system's application data (image store,
+        // kernel registry, plugin state). Mirrors Apple's own `ApplicationRoot`:
+        // the CONTAINER_APP_ROOT environment variable wins, then the system
+        // default (~/Library/Application Support/com.apple.container).
+        @Option(name: .customLong("app-root"), help: "Apple container system app-data root (default: $CONTAINER_APP_ROOT or ~/Library/Application Support/com.apple.container)")
+        var appRoot: String?
 
         @Option(name: [.customLong("cpus"), .customShort("c")], help: "vCPUs")
         var cpus: Int = 2
@@ -115,9 +122,17 @@ extension WWNContainerd {
                     rosetta: rosetta
                 )
             } else {
+                // Resolve the vminit initfs from the Apple container system's
+                // image store (the same store `container` CLI uses), instead of
+                // the framework's private default store. The store registers
+                // vminit under its fully-qualified OCI reference, so discover
+                // it rather than guessing a short-name or pinning a version.
+                let storeRoot = Self.resolveAppRoot(appRoot)
+                let vminitReference = try Self.discoverVminitReference(in: storeRoot)
                 manager = try await ContainerManager(
                     kernel: kernel,
-                    initfsReference: "vminit:latest",
+                    initfsReference: vminitReference,
+                    root: storeRoot,
                     network: network,
                     rosetta: rosetta
                 )
@@ -153,6 +168,11 @@ extension WWNContainerd {
 
             try await container.create()
             try await container.start()
+            // Signal readiness to the host (WWNContainerRunner polls this
+            // file) so Wawona's GUI can stop showing "compiling backend". A
+            // file keeps the terminal output clean when the container runs
+            // inside a Wawona terminal window.
+            Self.writeMarkerFile(environmentKey: "WAWONA_CONTAINER_READY_FILE")
             try? await container.resize(to: try current.size)
 
             if port != 0 {
@@ -161,10 +181,62 @@ extension WWNContainerd {
             }
 
             let exit = try await container.wait()
+            Self.writeMarkerFile(environmentKey: "WAWONA_CONTAINER_DONE_FILE")
             try await container.stop()
             if exit.exitCode != 0 {
                 throw ExitCode(Int32(exit.exitCode))
             }
+        }
+
+        /// Write a small marker file for the host runner, if the environment
+        /// requests one. Best effort: a missing or readonly path must not fail
+        /// the run.
+        static func writeMarkerFile(environmentKey: String) {
+            guard let path = ProcessInfo.processInfo.environment[environmentKey],
+                  !path.isEmpty
+            else { return }
+            FileManager.default.createFile(
+                atPath: path,
+                contents: Data("\(environmentKey)\n".utf8),
+                attributes: nil)
+        }
+
+        /// The Apple container system's app-data root. Mirrors Apple's own
+        /// `ApplicationRoot`: the `--app-root` flag wins, then the
+        /// `CONTAINER_APP_ROOT` environment variable, then the system default
+        /// (`~/Library/Application Support/com.apple.container`).
+        static func resolveAppRoot(_ flagValue: String?) -> URL {
+            let raw = flagValue ?? ProcessInfo.processInfo.environment["CONTAINER_APP_ROOT"]
+            if let raw, !raw.isEmpty {
+                return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath)
+            }
+            let support = FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first!
+            return support.appendingPathComponent("com.apple.container")
+        }
+
+        /// Find the vminit initfs image registered in the container system's
+        /// image store. The store keys it under its fully-qualified OCI
+        /// reference (`ghcr.io/apple/containerization/vminit:<version>`), so
+        /// discover that entry instead of pinning a version or guessing the
+        /// `vminit:latest` short-name.
+        static func discoverVminitReference(in storeRoot: URL) throws -> String {
+            let stateURL = storeRoot.appendingPathComponent("state.json")
+            guard let data = try? Data(contentsOf: stateURL),
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                throw ValidationError(
+                    "vminit initfs not found: no state.json in the container system store at \(storeRoot.path). "
+                        + "Start the Apple container system first (`container system start`) or pass --initfs.")
+            }
+            for key in dict.keys where key.split(separator: "/").last?.hasPrefix("vminit") == true {
+                return key
+            }
+            throw ValidationError(
+                "vminit initfs not registered in the container system store at \(storeRoot.path). "
+                    + "Start the Apple container system first (`container system start`) or pass --initfs.")
         }
     }
 }
