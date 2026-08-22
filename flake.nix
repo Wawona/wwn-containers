@@ -49,14 +49,14 @@
           pkgs = pkgsFor system;
           wwn-oci = pkgs.callPackage ./dependencies/containers/oci-core.nix { };
           wwn-containerd =
-            if pkgs.stdenv.isDarwin
+            if pkgs.stdenv.hostPlatform.isDarwin
             then pkgs.callPackage ./dependencies/containers/macos/containerd-bridge.nix { }
             else null;
-          # Apple's `container` CLI + Containerization.framework. macOS only —
-          # never evaluate on iOS/Android/Linux (see apple-container-forbidden.nix
+          # Apple's `container` CLI + Containerization.framework. macOS only.
+          # Never evaluate on iOS/Android/Linux (see apple-container-forbidden.nix)
           # and wwn-toolchain baseRegistry sentinels). Wawona/docs/wwn-repo-dag.md.
           apple-container =
-            if pkgs.stdenv.isDarwin
+            if pkgs.stdenv.hostPlatform.isDarwin
             then pkgs.callPackage ./dependencies/containers/macos/apple-container.nix { }
             else null;
         in {
@@ -68,7 +68,7 @@
           container-cli = pkgs.callPackage ./dependencies/containers/cli/container-cli.nix {
             inherit wwn-oci wwn-containerd;
           };
-        } // (pkgs.lib.optionalAttrs pkgs.stdenv.isDarwin {
+        } // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           # macOS execution backend (Apple Containerization framework). Pure
           # staging; compiled on first run via host Swift (see containerd-bridge.nix).
           inherit wwn-containerd;
