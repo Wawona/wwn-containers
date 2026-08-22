@@ -112,7 +112,7 @@
           android = reg + "/container-cli.nix";
           wearos = reg + "/container-cli.nix";
         };
-        # Apple container CLI / Containerization.framework — macOS only.
+        # Apple container CLI / Containerization.framework. macOS only.
         # Other platforms throw (do not silently fall back). L3′ owns this key;
         # wwn-toolchain baseRegistry sentinels reject it at L0.
         apple-container = withPlatformVariants {
