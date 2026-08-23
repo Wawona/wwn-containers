@@ -80,7 +80,16 @@ each container runs in its own lightweight VM with `vminitd` (gRPC over vsock).
 codesign with `com.apple.security.virtualization` happen on first run via the
 host Swift toolchain - the same runtime-compile model as wwn-vms' `vz-launcher`.
 Direct/notarized channel only (not Mac App Store viable). `--wayland-vsock-port`
-forwards the guest's waypipe server into Wawona.
+bridges the guest's waypipe server into Wawona: after `container.start()` the
+backend dials the container's vsock port (`dialVsock`) and spawns a host
+`waypipe --socket-fds R,W client` on the raw fd pair (inheriting
+`WAYLAND_DISPLAY`/`XDG_RUNTIME_DIR`), so the guest session appears as a Wawona
+window. The host waypipe must be the `.#waypipe-splitfd` build — wwn-waypipe's
+macos.nix parses `--socket-fds` but cannot use it (`unreachable!` arms; the
+framework's unix-socket relay strips `SCM_RIGHTS`, so the raw fd is the only
+path) — resolved via `WWNP_WAYPIPE_BIN` or PATH. See
+`dependencies/containers/macos/waypipe-splitfd.nix` for the pending
+wwn-waypipe-upstream decision.
 
 ## Why depend on wwn-vms
 

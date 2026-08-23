@@ -2,3 +2,6 @@ result
 result-*
 .direnv
 dependencies/containers/oci-core/target/
+
+# SwiftPM build dirs (wwn-containerd / spike runtime-compile packages)
+.build/

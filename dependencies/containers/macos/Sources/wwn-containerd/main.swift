@@ -18,6 +18,7 @@ import Containerization
 import ContainerizationError
 import ContainerizationOCI
 import ContainerizationOS
+import Darwin
 import Foundation
 
 @main
@@ -175,17 +176,80 @@ extension WWNContainerd {
             Self.writeMarkerFile(environmentKey: "WAWONA_CONTAINER_READY_FILE")
             try? await container.resize(to: try current.size)
 
+            // Wawona Wayland bridge: dial the guest waypipe server's vsock
+            // port and attach the host waypipe client directly on the raw
+            // fd pair. The framework's unix-socket relay is a byte pipe that
+            // strips SCM_RIGHTS (BidirectionalRelay), so the fd handoff
+            // (--socket-fds) is the only transport that carries wl_shm fds.
+            // The host waypipe must be the waypipe-splitfd build (wwn-waypipe
+            // macos.nix parses --socket-fds but cannot use it). Resolve it
+            // via WWNP_WAYPIPE_BIN (Wawona's bundled binary) or PATH.
+            //
+            // The guest process is `waypipe --vsock -s <port> server -- <app>`,
+            // which blocks waiting for a client connection; a relay failure
+            // therefore fails the run (the guest session is stuck without it).
+            var relay: Foundation.Process?
             if port != 0 {
-                FileHandle.standardError.write(Data(
-                    "[wwn-containerd] guest waypipe expected on vsock port \(port); bridge it into Wawona with waypipe client + socat\n".utf8))
+                relay = try await Self.startWaypipeRelay(container: container, port: port)
             }
 
             let exit = try await container.wait()
+            if let relay, relay.isRunning {
+                relay.terminate()
+                relay.waitUntilExit()
+            }
             Self.writeMarkerFile(environmentKey: "WAWONA_CONTAINER_DONE_FILE")
             try await container.stop()
             if exit.exitCode != 0 {
                 throw ExitCode(Int32(exit.exitCode))
             }
+        }
+
+        /// Dial the guest vsock port (retrying until the guest waypipe server
+        /// binds) and spawn the host waypipe client on the raw fd pair.
+        /// WAYLAND_DISPLAY/XDG_RUNTIME_DIR are inherited from the runner, so
+        /// the client attaches to Wawona's compositor.
+        static func startWaypipeRelay(
+            container: LinuxContainer,
+            port: UInt32
+        ) async throws -> Foundation.Process {
+            var handle: FileHandle?
+            for attempt in 1...60 {
+                do {
+                    handle = try await container.dialVsock(port: port)
+                    break
+                } catch {
+                    if attempt == 60 { throw error }
+                    try await Task.sleep(nanoseconds: 500_000_000)
+                }
+            }
+            guard let handle else {
+                throw ValidationError("dialVsock returned nil")
+            }
+
+            // Sockets are full-duplex: dup the fd once per direction for the
+            // R,W pair waypipe expects.
+            let base = handle.fileDescriptor
+            let rfd = dup(base)
+            let wfd = dup(base)
+            guard rfd >= 0, wfd >= 0 else {
+                throw ValidationError("dup failed: \(String(cString: strerror(errno)))")
+            }
+
+            let waypipePath = ProcessInfo.processInfo.environment["WWNP_WAYPIPE_BIN"] ?? "waypipe"
+            let relay = Foundation.Process()
+            relay.executableURL = URL(fileURLWithPath: waypipePath)
+            relay.arguments = ["--socket-fds", "\(rfd),\(wfd)", "client"]
+            do {
+                try relay.run()
+            } catch {
+                throw ValidationError(
+                    "failed to spawn \(waypipePath) --socket-fds client: \(error). "
+                        + "Provide the waypipe-splitfd build via WWNP_WAYPIPE_BIN.")
+            }
+            FileHandle.standardError.write(Data(
+                "[wwn-containerd] waypipe client on vsock port \(port) (fd \(base), R=\(rfd) W=\(wfd))\n".utf8))
+            return relay
         }
 
         /// Write a small marker file for the host runner, if the environment
