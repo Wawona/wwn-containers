@@ -60,6 +60,8 @@ pkgs.writeShellApplication {
         --init              run an init process (signal fwd + zombie reaping)
         --id <name>         container id (default wawona)
         --wayland-vsock-port <n>  guest vsock port to bridge to Wawona (0 = off)
+        --waypipe-guest-bin <path>  host path to the Linux waypipe binary to
+                            inject into the guest (else $WAWONA_WAYPIPE_GUEST)
         --rm                accepted no-op: every run is one-shot (container is
                             always removed when it stops)
       exec|ps|start|stop|rm|logs   NOT IMPLEMENTED YET (needs persistent session)
@@ -131,6 +133,7 @@ pkgs.writeShellApplication {
             --init) WCD_ARGS+=(--init); shift ;;
             --id) WCD_ARGS+=(--id "$2"); shift 2 ;;
             --wayland-vsock-port) WCD_ARGS+=(--wayland-vsock-port "$2"); shift 2 ;;
+            --waypipe-guest-bin) WCD_ARGS+=(--waypipe-guest-bin "$2"); shift 2 ;;
             # wwn-containerd is one-shot: the container is always removed after
             # it stops, so --rm is accepted as a no-op for CLI compatibility.
             --rm) shift ;;

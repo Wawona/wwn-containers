@@ -92,6 +92,13 @@ extension WWNContainerd {
         @Option(name: .customLong("wayland-vsock-port"), help: "Guest vsock port to bridge to Wawona (0 = off)")
         var waylandVsockPort: UInt32 = 0
 
+        // Guest-side waypipe binary (a Linux build, e.g. nixpkgs waypipe for
+        // aarch64-linux), injected into the container as /usr/local/bin/waypipe
+        // when --wayland-vsock-port is set. Resolves via WAWONA_WAYPIPE_GUEST
+        // when omitted.
+        @Option(name: .customLong("waypipe-guest-bin"), help: "Host path to the guest waypipe binary to inject (default: $WAWONA_WAYPIPE_GUEST)")
+        var waypipeGuestBin: String?
+
         @Argument(parsing: .captureForPassthrough)
         var arguments: [String] = ["/bin/sh"]
 
@@ -157,11 +164,25 @@ extension WWNContainerd {
                 config.process.arguments = arguments
                 config.process.workingDirectory = cwd
                 config.useInit = self.`init`
-                // WAYLAND_DISPLAY/XDG_RUNTIME_DIR so a GUI app in-guest talks to
-                // the waypipe server we expect to run on the vsock port below.
+                // Wawona Wayland bridge (guest side): inject the host's Linux
+                // waypipe into the container as a read-only file mount and
+                // wrap the command so ANY image runs its app through
+                // `waypipe --vsock -s <port> server` — no special image needed.
+                // The sh preamble creates XDG_RUNTIME_DIR (the C waypipe binds
+                // its display socket there and never mkdir's; stock images
+                // lack /run/user/0).
                 if port != 0 {
+                    let guestWaypipe = try Self.resolveGuestWaypipeBin(waypipeGuestBin)
+                    config.mounts.append(.share(
+                        source: guestWaypipe,
+                        destination: "/usr/local/bin/waypipe",
+                        options: ["ro"]
+                    ))
+                    let wrapper = "mkdir -p \"$XDG_RUNTIME_DIR\" && chmod 0700 \"$XDG_RUNTIME_DIR\" && exec /usr/local/bin/waypipe --no-gpu --vsock -s \"$WAWONA_VSOCK_PORT\" server -- \"$@\""
+                    config.process.arguments = ["/bin/sh", "-c", wrapper, "wawona-waypipe"] + arguments
                     config.process.environmentVariables.append("WAYLAND_DISPLAY=wayland-0")
                     config.process.environmentVariables.append("XDG_RUNTIME_DIR=/run/user/0")
+                    config.process.environmentVariables.append("WAWONA_VSOCK_PORT=\(port)")
                 }
             }
 
@@ -176,18 +197,20 @@ extension WWNContainerd {
             Self.writeMarkerFile(environmentKey: "WAWONA_CONTAINER_READY_FILE")
             try? await container.resize(to: try current.size)
 
-            // Wawona Wayland bridge: dial the guest waypipe server's vsock
-            // port and attach the host waypipe client directly on the raw
-            // fd pair. The framework's unix-socket relay is a byte pipe that
-            // strips SCM_RIGHTS (BidirectionalRelay), so the fd handoff
+            // Wawona Wayland bridge (host side): the guest process is now
+            // `waypipe --vsock -s <port> server -- <app>` (injected binary +
+            // wrapped command above). Dial the guest's vsock port and attach
+            // the host waypipe client directly on the raw fd pair. The
+            // framework's unix-socket relay is a byte pipe that strips
+            // SCM_RIGHTS (BidirectionalRelay), so the fd handoff
             // (--socket-fds) is the only transport that carries wl_shm fds.
             // The host waypipe must be the waypipe-splitfd build (wwn-waypipe
-            // macos.nix parses --socket-fds but cannot use it). Resolve it
-            // via WWNP_WAYPIPE_BIN (Wawona's bundled binary) or PATH.
+            // macos.nix parses --socket-fds but cannot use it). Resolve it via
+            // WWNP_WAYPIPE_BIN (Wawona's bundled binary) or PATH.
             //
-            // The guest process is `waypipe --vsock -s <port> server -- <app>`,
-            // which blocks waiting for a client connection; a relay failure
-            // therefore fails the run (the guest session is stuck without it).
+            // The guest waypipe server blocks waiting for a client connection;
+            // a relay failure therefore fails the run (the guest session is
+            // stuck without it).
             var relay: Foundation.Process?
             if port != 0 {
                 relay = try await Self.startWaypipeRelay(container: container, port: port)
@@ -203,6 +226,30 @@ extension WWNContainerd {
             if exit.exitCode != 0 {
                 throw ExitCode(Int32(exit.exitCode))
             }
+        }
+
+        /// Resolve the guest-side waypipe binary (a Linux build injected into
+        /// the container as /usr/local/bin/waypipe): --waypipe-guest-bin wins,
+        /// then WAWONA_WAYPIPE_GUEST.
+        static func resolveGuestWaypipeBin(_ flagValue: String?) throws -> String {
+            if let raw = flagValue, !raw.isEmpty {
+                let path = (raw as NSString).expandingTildeInPath
+                guard FileManager.default.fileExists(atPath: path) else {
+                    throw ValidationError("--waypipe-guest-bin: no such file: \(path)")
+                }
+                return path
+            }
+            if let env = ProcessInfo.processInfo.environment["WAWONA_WAYPIPE_GUEST"],
+               !env.isEmpty
+            {
+                guard FileManager.default.fileExists(atPath: env) else {
+                    throw ValidationError("WAWONA_WAYPIPE_GUEST: no such file: \(env)")
+                }
+                return env
+            }
+            throw ValidationError(
+                "the Wayland bridge needs a guest waypipe binary: pass --waypipe-guest-bin "
+                    + "or set WAWONA_WAYPIPE_GUEST (e.g. nixpkgs waypipe for aarch64-linux)")
         }
 
         /// Dial the guest vsock port (retrying until the guest waypipe server
