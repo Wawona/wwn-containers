@@ -45,6 +45,13 @@ extension WWNContainerd {
         @Option(name: [.customLong("image"), .customShort("i")], help: "OCI image reference")
         var imageReference: String = "docker.io/library/alpine:3.20"
 
+        // Run from a local OCI layout directory instead of resolving a registry
+        // reference. Loads the image into the container system's image store
+        // via ImageStore.load (the wwn-oci `import` command emits such a dir
+        // next to the unpacked rootfs), then boots it.
+        @Option(name: .customLong("image-archive"), help: "Path to a local OCI layout directory (overrides --image)")
+        var imageArchive: String?
+
         @Option(name: .long, help: "Container id")
         var id: String = "wawona"
 
@@ -151,9 +158,25 @@ extension WWNContainerd {
             defer { current.tryReset() }
 
             let port = waylandVsockPort
+
+            // Local image from disk: load the OCI layout into the container
+            // system's image store, then boot it by the reference the layout
+            // registers (org.opencontainers.image.ref.name).
+            let effectiveReference: String
+            if let archive = imageArchive {
+                let url = URL(fileURLWithPath: (archive as NSString).expandingTildeInPath)
+                let loaded = try await manager.imageStore.load(from: url)
+                guard let first = loaded.first else {
+                    throw ValidationError("no image found in OCI layout at \(archive)")
+                }
+                effectiveReference = first.reference
+            } else {
+                effectiveReference = imageReference
+            }
+
             let container = try await manager.create(
                 id,
-                reference: imageReference,
+                reference: effectiveReference,
                 rootfsSizeInBytes: fsSizeInMB.mib(),
                 readOnly: readOnly,
                 networking: true

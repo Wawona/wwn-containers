@@ -18,6 +18,7 @@ pub mod catalog;
 pub mod digest;
 pub mod error;
 pub mod hub;
+pub mod import;
 pub mod reference;
 pub mod registry;
 pub mod spec;

@@ -38,12 +38,17 @@ pkgs.writeShellApplication {
 
     IMAGE MANAGEMENT (universal - every Wawona target, incl. iOS/watchOS):
       pull <ref>            download an OCI image (digest-verified) + unpack rootfs
+      import <path>         add an image from disk (docker-archive tar.gz,
+                            OCI-archive tar, or OCI layout dir; auto-detected)
+                            --reference <name:tag> to name it
       images                list pulled images
       rmi <ref>             remove an image (keeps shared blobs)
       inspect <ref>         show image manifest/config/layers/rootfs
       resolve <ref>         print the parsed reference components
       search <query>        search Docker Hub for images (metadata only)
       tags <repo>           list tags of a Docker Hub repository
+                            (--matches <substr> filters tags client-side,
+                             --limit/--page page through them)
 
     LIFECYCLE (only where a Linux kernel is available):
       run <ref> [cmd...]    boot a per-container VM and run a process (macOS:
@@ -62,6 +67,8 @@ pkgs.writeShellApplication {
         --wayland-vsock-port <n>  guest vsock port to bridge to Wawona (0 = off)
         --waypipe-guest-bin <path>  host path to the Linux waypipe binary to
                             inject into the guest (else $WAWONA_WAYPIPE_GUEST)
+        --image-archive <path>  run from a local OCI layout dir instead of a
+                            registry reference (wwn-oci import emits one)
         --rm                accepted no-op: every run is one-shot (container is
                             always removed when it stops)
       exec|ps|start|stop|rm|logs   NOT IMPLEMENTED YET (needs persistent session)
@@ -107,7 +114,7 @@ pkgs.writeShellApplication {
         usage
         exit 0
         ;;
-      pull|images|rmi|inspect|resolve|search|tags)
+      pull|images|rmi|inspect|resolve|search|tags|import)
         exec wwn-oci "$cmd" "$@"
         ;;
       run)
@@ -134,6 +141,7 @@ pkgs.writeShellApplication {
             --id) WCD_ARGS+=(--id "$2"); shift 2 ;;
             --wayland-vsock-port) WCD_ARGS+=(--wayland-vsock-port "$2"); shift 2 ;;
             --waypipe-guest-bin) WCD_ARGS+=(--waypipe-guest-bin "$2"); shift 2 ;;
+            --image-archive) WCD_ARGS+=(--image-archive "$2"); shift 2 ;;
             # wwn-containerd is one-shot: the container is always removed after
             # it stops, so --rm is accepted as a no-op for CLI compatibility.
             --rm) shift ;;
