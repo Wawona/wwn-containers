@@ -12,13 +12,13 @@ Machines kind **`container`** (OCI pull + run). Not VMs-as-product (see
 
 | | Mode A (store) | Mode B |
 |---|---|---|
-| iOS / iPadOS | container-in-VM on **jitless** VM engine | container-in-VM **+ JIT** (Mode B IPA) |
+| iOS / iPadOS / visionOS | container-in-VM on **jitless** VM engine | container-in-VM **+ JIT** (Mode B IPA) |
 | macOS | Apple Containerization / planned native path | Privileged paths outside store-shaped builds |
 | Android | Play-safe | Root/privileged outside Play |
 
 - **Never** ship Mode B/JIT container engines in App Store / Play binaries.
 - Do **not** conflate OCI images with `repo.wawona.io/wasm` `.wasm` packages.
-- tvOS / watchOS / visionOS: container kinds **forbidden**.
+- tvOS / watchOS: container kinds **forbidden**.
 - Respect in-flight Apple Container work — do not casually rewrite that path.
 
 Canonical: `Wawona/docs/containers-mode-a-b.md`, `mode-a-b.md`, `wawona-product-map`.

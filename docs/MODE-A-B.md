@@ -28,7 +28,7 @@ root Mode B optional later.
 ## Mode A implementation
 
 1. Image pull works on all targets including watchOS (mgmt only).
-2. iOS/iPadOS **run** = start jitless VM from `wwn-vms` Mode A → mount/unpack
+2. iOS/iPadOS/visionOS **run** = start jitless VM from `wwn-vms` Mode A → mount/unpack
    rootfs → crun in-guest → waypipe/vsock to Wawona.
 3. CI: store artifact links only Mode A VM engine; no JIT container path.
 4. Review Notes: “OCI image data + in-app interpreter VM; no JIT.”

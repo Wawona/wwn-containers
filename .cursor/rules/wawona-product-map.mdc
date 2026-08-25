@@ -42,8 +42,8 @@ Canonical prose: `Wawona/docs/mode-a-b.md`, `swinging-bridge.md`, `iland-mode-a-
 
 ### VMs / containers
 
-- Platforms: planned on macOS, iOS, iPadOS, Android, Linux. **Forbidden** on tvOS, watchOS, visionOS.
-- iOS Mode A: UTM-SE–class **jitless**. iOS Mode B: JIT UTM via Mode B IPA.
+- Platforms: planned on macOS, iOS, iPadOS, visionOS, Android, Linux. **Forbidden** on tvOS, watchOS.
+- iOS / iPadOS / visionOS Mode A: UTM-SE-class **jitless**. Mode B: JIT UTM via Mode B IPA.
 - Backends differ by OS (macOS Virtualization/Apple Container ≠ iOS UTM ≠ Android QEMU). Do not force one engine.
 - Not the same as on-device `wwn-zsh` shell or Wasm packages.
 

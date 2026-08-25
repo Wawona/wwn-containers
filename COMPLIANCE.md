@@ -7,8 +7,8 @@ and [Wawona `mode-a-b.md`](https://github.com/Wawona/Wawona/blob/development/doc
 | --- | --- | --- | --- |
 | macOS (direct) | Yes | Apple Containerization and/or container-in-`wwn-vms` | Same privileged channel |
 | macOS (MAS) | Yes | **No** | N/A |
-| iOS / iPadOS | Yes | container-in-VM on **jitless** UTM-SE/`wwn-vms` A | container-in-VM on **JIT** UTM (`wwn-vms` B) — **Sileo Mode B IPA only** |
-| visionOS / tvOS / watchOS | Yes (mgmt) | **No** run (forbidden machine kind / watch) | **No** |
+| iOS / iPadOS / visionOS | Yes | container-in-VM on **jitless** UTM-SE/`wwn-vms` A | container-in-VM on **JIT** UTM (`wwn-vms` B). Sileo Mode B IPA only |
+| tvOS / watchOS | Yes (mgmt) | **No** run (forbidden machine kind) | **No** |
 | Android | Yes | container-in-VM and/or rootless proot | Optional root Mode B |
 
 ## Hard rules
