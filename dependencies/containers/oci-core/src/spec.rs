@@ -11,7 +11,8 @@ pub mod media_type {
     pub const OCI_LAYER_GZIP: &str = "application/vnd.oci.image.layer.v1.tar+gzip";
     pub const OCI_LAYER_ZSTD: &str = "application/vnd.oci.image.layer.v1.tar+zstd";
     // Docker v2 schema 2
-    pub const DOCKER_MANIFEST_LIST: &str = "application/vnd.docker.distribution.manifest.list.v2+json";
+    pub const DOCKER_MANIFEST_LIST: &str =
+        "application/vnd.docker.distribution.manifest.list.v2+json";
     pub const DOCKER_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
     pub const DOCKER_CONFIG: &str = "application/vnd.docker.container.image.v1+json";
     pub const DOCKER_LAYER_GZIP: &str = "application/vnd.docker.image.rootfs.diff.tar.gzip";
@@ -19,7 +20,13 @@ pub mod media_type {
     /// The `Accept` header we send so the registry may return either an index or
     /// a single manifest, in OCI or Docker flavor.
     pub fn accept_all() -> String {
-        [OCI_INDEX, OCI_MANIFEST, DOCKER_MANIFEST_LIST, DOCKER_MANIFEST].join(", ")
+        [
+            OCI_INDEX,
+            OCI_MANIFEST,
+            DOCKER_MANIFEST_LIST,
+            DOCKER_MANIFEST,
+        ]
+        .join(", ")
     }
 
     pub fn is_index(mt: &str) -> bool {
@@ -54,13 +61,19 @@ pub struct Descriptor {
     pub platform: Option<Platform>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub urls: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Platform {
     pub architecture: String,
     pub os: String,
-    #[serde(default, rename = "os.version", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "os.version",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub os_version: Option<String>,
     #[serde(default)]
     pub variant: Option<String>,

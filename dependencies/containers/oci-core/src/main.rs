@@ -3,17 +3,23 @@
 //! shared by every Wawona target. The `container` CLI fronts it for image
 //! commands and delegates execution to the per-target backend.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
 
+use wwn_oci::hub::HubClient;
+use wwn_oci::import::{import_image, ImportOptions};
 use wwn_oci::registry::Credentials;
 use wwn_oci::{catalog, pull, unpack, PullOptions, TargetPlatform};
 
 #[derive(Parser)]
-#[command(name = "wwn-oci", version, about = "Universal OCI image management for Wawona")]
+#[command(
+    name = "wwn-oci",
+    version,
+    about = "Universal OCI image management for Wawona"
+)]
 struct Cli {
     /// Image store root (blobs + rootfs + catalog). Defaults to $WWN_OCI_ROOT,
     /// then $XDG_DATA_HOME/wwn-oci, then ~/.local/share/wwn-oci.
@@ -47,20 +53,64 @@ enum Command {
         #[arg(long, env = "WWN_OCI_PASSWORD")]
         password: Option<String>,
     },
+    /// Import an image from disk (docker-archive tar.gz, OCI-archive tar, or
+    /// OCI layout directory; auto-detected), store blobs, unpack a rootfs,
+    /// and record it in the local image catalog. Also emits an OCI layout
+    /// directory for `wwn-containerd --image-archive`.
+    Import {
+        /// Path to the archive (tar/tar.gz) or OCI layout directory.
+        path: String,
+        /// Reference to catalog the image under (default: image metadata, then
+        /// `local/<basename>:latest`).
+        #[arg(long)]
+        reference: Option<String>,
+        /// Skip unpacking the rootfs (store blobs only).
+        #[arg(long)]
+        no_unpack: bool,
+    },
     /// List images in the local catalog.
-    Images,
+    Images {
+        /// Emit a JSON array of catalog entries instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
     /// Remove an image from the catalog (deletes its unpacked rootfs; shared
     /// blobs are kept for other tags).
-    Rmi {
-        reference: String,
-    },
+    Rmi { reference: String },
     /// Show a pulled image's manifest/config digests, layers, and rootfs path.
-    Inspect {
-        reference: String,
-    },
+    Inspect { reference: String },
     /// Parse a reference and print its resolved components.
-    Resolve {
-        reference: String,
+    Resolve { reference: String },
+    /// Search Docker Hub for images (metadata only; nothing is downloaded).
+    Search {
+        query: String,
+        /// Number of results per page (Hub caps at 100).
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
+        /// Page number (1-based).
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        /// Emit JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// List tags for a Docker Hub repository (`python`, `circleci/python`, …).
+    Tags {
+        repository: String,
+        /// Number of results per page (Hub caps at 100).
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
+        /// Page number (1-based).
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+        /// Emit JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+        /// Client-side case-insensitive substring filter on the tag name.
+        /// (The Hub API has no server-side tag search, so this filters the
+        /// fetched page — raise --limit when filtering deep into a repo.)
+        #[arg(long)]
+        matches: Option<String>,
     },
 }
 
@@ -87,7 +137,14 @@ fn run(cli: Cli) -> Result<ExitCode, wwn_oci::OciError> {
             println!("base_url:   {}", r.base_url());
             Ok(ExitCode::SUCCESS)
         }
-        Command::Pull { reference, os, arch, no_unpack, username, password } => {
+        Command::Pull {
+            reference,
+            os,
+            arch,
+            no_unpack,
+            username,
+            password,
+        } => {
             let platform = TargetPlatform {
                 arch: arch.unwrap_or_else(|| TargetPlatform::linux_host().arch),
                 os,
@@ -95,7 +152,11 @@ fn run(cli: Cli) -> Result<ExitCode, wwn_oci::OciError> {
             };
             let opts = PullOptions {
                 platform,
-                credentials: Credentials { username, password, bearer: None },
+                credentials: Credentials {
+                    username,
+                    password,
+                    bearer: None,
+                },
                 // Unpack is done below into a per-image dir, not pull()'s
                 // shared <root>/rootfs (which would collide across images).
                 unpack_rootfs: false,
@@ -117,7 +178,11 @@ fn run(cli: Cli) -> Result<ExitCode, wwn_oci::OciError> {
                         let blob = store.read(d)?;
                         // Layer media types were validated during pull; gzip tar
                         // is the norm and apply_layer sniffs the rest.
-                        unpack::apply_layer("application/vnd.oci.image.layer.v1.tar+gzip", blob, &dir)?;
+                        unpack::apply_layer(
+                            "application/vnd.oci.image.layer.v1.tar+gzip",
+                            blob,
+                            &dir,
+                        )?;
                     }
                     std::fs::write(dir.join(".unpacked"), b"")?;
                 }
@@ -147,8 +212,48 @@ fn run(cli: Cli) -> Result<ExitCode, wwn_oci::OciError> {
             }
             Ok(ExitCode::SUCCESS)
         }
-        Command::Images => {
+        Command::Import {
+            path,
+            reference,
+            no_unpack,
+        } => {
+            let img = import_image(
+                Path::new(&path),
+                &root,
+                &ImportOptions {
+                    reference,
+                    unpack_rootfs: !no_unpack,
+                },
+            )?;
+            let entry = catalog::ImageEntry {
+                reference: img.reference.clone(),
+                canonical: img.reference.clone(),
+                manifest_digest: img.manifest_digest.to_string(),
+                config_digest: img.config_digest.to_string(),
+                layer_digests: img.layer_digests.iter().map(|d| d.to_string()).collect(),
+                pulled_at_unix: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+                rootfs: img.rootfs.clone(),
+            };
+            catalog::save(&root, &entry)?;
+            println!("imported {}", entry.canonical);
+            println!("  manifest: {}", entry.manifest_digest);
+            println!("  config:   {}", entry.config_digest);
+            println!("  layers:   {}", entry.layer_digests.len());
+            if let Some(rootfs) = &img.rootfs {
+                println!("  rootfs:   {}", rootfs.display());
+            }
+            println!("  oci-layout: {}", img.oci_layout.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Images { json } => {
             let entries = catalog::list(&root)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&entries)?);
+                return Ok(ExitCode::SUCCESS);
+            }
             if entries.is_empty() {
                 eprintln!("no images pulled (root: {})", root.display());
                 return Ok(ExitCode::SUCCESS);
@@ -188,5 +293,101 @@ fn run(cli: Cli) -> Result<ExitCode, wwn_oci::OciError> {
                 Ok(ExitCode::FAILURE)
             }
         },
+        Command::Search {
+            query,
+            limit,
+            page,
+            json,
+        } => {
+            let hub = HubClient::new();
+            let resp = hub.search_repositories(&query, page, limit.clamp(1, 100))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&resp)?);
+                return Ok(ExitCode::SUCCESS);
+            }
+            println!(
+                "{:<32} {:<8} {:<14} {:<8} {}",
+                "NAME", "STARS", "PULLS", "OFFICIAL", "DESCRIPTION"
+            );
+            for r in &resp.results {
+                let desc = truncate(&r.short_description, 56);
+                println!(
+                    "{:<32} {:<8} {:<14} {:<8} {}",
+                    r.pullable_ref,
+                    r.star_count,
+                    r.pull_count,
+                    if r.is_official { "yes" } else { "no" },
+                    desc
+                );
+            }
+            if resp.results.is_empty() {
+                eprintln!("wwn-oci: no results for query: {query}");
+            } else {
+                eprintln!(
+                    "wwn-oci: {} total results (page {page}, {} shown)",
+                    resp.count,
+                    resp.results.len()
+                );
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Tags {
+            repository,
+            limit,
+            page,
+            json,
+            matches,
+        } => {
+            let hub = HubClient::new();
+            let mut resp = hub.list_tags(&repository, page, limit.clamp(1, 100))?;
+            if let Some(needle) = matches {
+                let needle = needle.to_lowercase();
+                resp.results
+                    .retain(|t| t.name.to_lowercase().contains(&needle));
+            }
+            if json {
+                println!("{}", serde_json::to_string_pretty(&resp)?);
+                return Ok(ExitCode::SUCCESS);
+            }
+            println!("{:<24} {:<24} {:<12} {}", "TAG", "ARCHES", "SIZE", "PUSHED");
+            for t in &resp.results {
+                let mut seen = std::collections::HashSet::new();
+                let arches: Vec<&str> = t
+                    .images
+                    .iter()
+                    .map(|i| i.architecture.as_str())
+                    .filter(|a| !a.is_empty() && seen.insert(*a))
+                    .collect();
+                println!(
+                    "{:<24} {:<24} {:<12} {}",
+                    t.name,
+                    arches.join(","),
+                    t.full_size.unwrap_or(0),
+                    t.tag_last_pushed.as_deref().unwrap_or("-")
+                );
+            }
+            if resp.results.is_empty() {
+                eprintln!("wwn-oci: no tags found for repository: {repository}");
+            } else {
+                eprintln!(
+                    "wwn-oci: {} total tags (page {page}, {} shown)",
+                    resp.count,
+                    resp.results.len()
+                );
+            }
+            Ok(ExitCode::SUCCESS)
+        }
     }
+}
+
+/// Trim `s` to at most `max` bytes at a char boundary (avoids mid-UTF-8 cuts).
+fn truncate(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
 }
