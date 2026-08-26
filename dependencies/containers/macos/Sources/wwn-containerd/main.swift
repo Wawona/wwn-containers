@@ -137,25 +137,26 @@ extension WWNContainerd {
                     rosetta: rosetta
                 )
             } else {
-                // Resolve the vminit initfs from the Apple container system's
-                // image store (the same store `container` CLI uses), instead of
-                // the framework's private default store. The store registers
-                // vminit under its fully-qualified OCI reference, so discover
-                // it rather than guessing a short-name or pinning a version.
-                let storeRoot = Self.resolveAppRoot(appRoot)
-                let vminitReference = try Self.discoverVminitReference(in: storeRoot)
+                // Match Apple's `cctl run` macOS path: default image store +
+                // `vminit:latest` (same store the system `container` CLI uses).
                 manager = try await ContainerManager(
                     kernel: kernel,
-                    initfsReference: vminitReference,
-                    root: storeRoot,
+                    initfsReference: "vminit:latest",
                     network: network,
                     rosetta: rosetta
                 )
             }
 
-            let current = try Terminal.current
-            try current.setraw()
-            defer { current.tryReset() }
+            let useTTY = isatty(STDIN_FILENO) != 0
+            let terminal: Terminal?
+            if useTTY {
+                let current = try Terminal.current
+                try current.setraw()
+                defer { current.tryReset() }
+                terminal = current
+            } else {
+                terminal = nil
+            }
 
             let port = waylandVsockPort
 
@@ -183,10 +184,24 @@ extension WWNContainerd {
             ) { config in
                 config.cpus = cpus
                 config.memoryInBytes = memory.mib()
-                config.process.setTerminalIO(terminal: current)
+                if let terminal {
+                    config.process.setTerminalIO(terminal: terminal)
+                }
                 config.process.arguments = arguments
                 config.process.workingDirectory = cwd
                 config.useInit = self.`init`
+
+                var hosts = Hosts.default
+                if #available(macOS 26, *), !config.interfaces.isEmpty {
+                    let interface = config.interfaces[0]
+                    hosts.entries.append(
+                        Hosts.Entry(
+                            ipAddress: interface.ipv4Address.address.description,
+                            hostnames: [id]
+                        ))
+                }
+                config.hosts = hosts
+
                 // Wawona Wayland bridge (guest side): inject the host's Linux
                 // waypipe into the container as a read-only file mount and
                 // wrap the command so ANY image runs its app through
@@ -218,7 +233,9 @@ extension WWNContainerd {
             // file keeps the terminal output clean when the container runs
             // inside a Wawona terminal window.
             Self.writeMarkerFile(environmentKey: "WAWONA_CONTAINER_READY_FILE")
-            try? await container.resize(to: try current.size)
+            if let terminal {
+                try? await container.resize(to: try terminal.size)
+            }
 
             // Wawona Wayland bridge (host side): the guest process is now
             // `waypipe --vsock -s <port> server -- <app>` (injected binary +

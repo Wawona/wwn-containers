@@ -1,4 +1,4 @@
 # macOS execution: Apple Containerization.framework via wwn-containerd.
 { pkgs, lib, ... }:
 assert pkgs.stdenv.hostPlatform.isDarwin;
-pkgs.callPackage ../macos/containerd-bridge.nix { }
+pkgs.callPackage ../macos/wwn-containerd.nix { }

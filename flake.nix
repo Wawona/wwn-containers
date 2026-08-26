@@ -50,7 +50,7 @@
           wwn-oci = pkgs.callPackage ./dependencies/containers/oci-core.nix { };
           wwn-containerd =
             if pkgs.stdenv.hostPlatform.isDarwin
-            then pkgs.callPackage ./dependencies/containers/macos/containerd-bridge.nix { }
+            then pkgs.callPackage ./dependencies/containers/macos/wwn-containerd.nix { }
             else null;
           # Apple's `container` CLI + Containerization.framework. macOS only.
           # Never evaluate on iOS/Android/Linux (see apple-container-forbidden.nix)
@@ -69,8 +69,8 @@
             inherit wwn-oci wwn-containerd;
           };
         } // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
-          # macOS execution backend (Apple Containerization framework). Pure
-          # staging; compiled on first run via host Swift (see containerd-bridge.nix).
+          # macOS execution backend (Apple Containerization.framework). Built
+          # at nix build time; no runtime Swift compile (see wwn-containerd.nix).
           inherit wwn-containerd;
           # Official Apple container CLI, deps locked with swiftpm2nix (v7).
           inherit apple-container;

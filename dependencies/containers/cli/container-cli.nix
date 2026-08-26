@@ -109,6 +109,17 @@ pkgs.writeShellApplication {
       return 1
     }
 
+    # Prefer wwn-containerd colocated with this script (Wawona.app Resources/bin).
+    resolve_wwn_containerd() {
+      local script_dir
+      script_dir="$(cd "$(dirname "$0")" && pwd)"
+      if [ -x "$script_dir/wwn-containerd" ]; then
+        printf '%s\n' "$script_dir/wwn-containerd"
+        return 0
+      fi
+      command -v wwn-containerd
+    }
+
     case "$cmd" in
       -h|--help|help)
         usage
@@ -172,9 +183,17 @@ pkgs.writeShellApplication {
             ;;
           *) REF="docker.io/library/$REF" ;;
         esac
+        # Apple's Containerization reference parser requires an explicit tag or
+        # digest (docker.io/nixos/nix is rejected; docker.io/nixos/nix:latest
+        # is not).
+        case "$REF" in
+          *@*|*:* ) ;;
+          *) REF="$REF:latest" ;;
+        esac
         case "$(uname -s):$BACKEND" in
           Darwin:auto|Darwin:containerization)
-            if ! command -v wwn-containerd-run >/dev/null 2>&1; then
+            WWN_CONTAINERD="$(resolve_wwn_containerd || true)"
+            if [ -z "$WWN_CONTAINERD" ] || [ ! -x "$WWN_CONTAINERD" ]; then
               echo "container: wwn-containerd backend not available in this build." >&2
               exit 3
             fi
@@ -187,8 +206,7 @@ pkgs.writeShellApplication {
                 exit 3
               fi
             fi
-            # Default command: the image's /bin/sh (wwn-containerd default).
-            exec wwn-containerd-run run -i "$REF" -k "$KERNEL" "''${INITFS_ARGS[@]}" "''${WCD_ARGS[@]}" "$@"
+            exec "$WWN_CONTAINERD" run -i "$REF" -k "$KERNEL" "''${INITFS_ARGS[@]}" "''${WCD_ARGS[@]}" "$@"
             ;;
           *)
             echo "container: 'run' is not implemented on this platform/backend yet ($(uname -s), backend=$BACKEND)." >&2

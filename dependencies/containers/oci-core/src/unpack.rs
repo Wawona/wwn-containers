@@ -69,6 +69,7 @@ fn apply_tar(reader: impl Read, rootfs: &Path) -> Result<(), OciError> {
 
         let dest = safe_join(rootfs, &path)?;
         if let Some(p) = dest.parent() {
+            ensure_writable_ancestors(p)?;
             fs::create_dir_all(p)?;
         }
 
@@ -83,11 +84,16 @@ fn apply_tar(reader: impl Read, rootfs: &Path) -> Result<(), OciError> {
     Ok(())
 }
 
-/// Join `rel` under `base`, rejecting absolute paths and `..` traversal so a
-/// malicious layer cannot escape the rootfs.
+/// Join `rel` under `base`. OCI/Docker layer tars often use absolute paths
+/// (`/etc/passwd`); strip a single leading root component. Reject `..`
+/// traversal so a malicious layer cannot escape the rootfs.
 fn safe_join(base: &Path, rel: &Path) -> Result<PathBuf, OciError> {
     let mut out = base.to_path_buf();
-    for comp in rel.components() {
+    let mut components = rel.components().peekable();
+    if matches!(components.peek(), Some(Component::RootDir)) {
+        components.next();
+    }
+    for comp in components {
         match comp {
             Component::Normal(c) => out.push(c),
             Component::CurDir => {}
@@ -110,6 +116,23 @@ fn safe_join(base: &Path, rel: &Path) -> Result<PathBuf, OciError> {
 
 fn symlink_or_exists(p: &Path) -> bool {
     p.symlink_metadata().is_ok()
+}
+
+/// Layer tars may mark store paths read-only; later entries in the same or a
+/// following layer still need to create children underneath.
+fn ensure_writable_ancestors(path: &Path) -> Result<(), OciError> {
+    let mut cursor = Some(path);
+    while let Some(current) = cursor {
+        if current.exists() {
+            let mut perms = current.metadata()?.permissions();
+            if perms.readonly() {
+                perms.set_readonly(false);
+                fs::set_permissions(current, perms)?;
+            }
+        }
+        cursor = current.parent();
+    }
+    Ok(())
 }
 
 fn remove_path(p: &Path) -> Result<(), OciError> {
@@ -139,7 +162,10 @@ mod tests {
     fn rejects_traversal() {
         let base = Path::new("/tmp/rootfs");
         assert!(safe_join(base, Path::new("../etc/passwd")).is_err());
-        assert!(safe_join(base, Path::new("/etc/passwd")).is_err());
+        assert_eq!(
+            safe_join(base, Path::new("/etc/passwd")).unwrap(),
+            Path::new("/tmp/rootfs/etc/passwd")
+        );
         assert_eq!(
             safe_join(base, Path::new("a/./b")).unwrap(),
             Path::new("/tmp/rootfs/a/b")

@@ -2,16 +2,14 @@
 //
 // wwn-containerd — Wawona's macOS OCI execution backend, built on Apple's
 // Containerization framework (per-container lightweight VM + vminitd, gRPC over
-// vsock). Compiled on first run by containerd-bridge.nix using the host Swift
-// toolchain + macOS SDK, so the Nix build stays pure (same model as wwn-vms'
-// vz-launcher).
+// vsock). Built at `nix build` time (see wwn-containerd.nix); no runtime compile.
 import PackageDescription
 
 let package = Package(
     name: "wwn-containerd",
     platforms: [.macOS(.v15)],
     dependencies: [
-        .package(url: "https://github.com/apple/containerization.git", branch: "main"),
+        .package(url: "https://github.com/apple/containerization.git", exact: "0.40.1"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
     ],
     targets: [

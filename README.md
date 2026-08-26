@@ -75,10 +75,11 @@ nix build .#apple-container
 `dependencies/containers/macos` is a SwiftPM package (`wwn-containerd`) built on
 Apple's [Containerization](https://github.com/apple/containerization) framework:
 each container runs in its own lightweight VM with `vminitd` (gRPC over vsock).
-`nix build .#wwn-containerd` stages the sources purely; the actual `swift build`
-(which fetches apple/containerization and needs the macOS 15+ SDK) + ad-hoc
-codesign with `com.apple.security.virtualization` happen on first run via the
-host Swift toolchain - the same runtime-compile model as wwn-vms' `vz-launcher`.
+`nix build .#wwn-containerd` compiles the Swift binary at build time (host
+Xcode + macOS SDK, `__noChroot`) and installs a prebuilt, ad-hoc signed
+`bin/wwn-containerd` into the Nix store. Wawona bundles that binary into
+`Wawona.app/Contents/Resources/bin/`; Machines Start never runs `swift build`
+or writes to `~/.cache/wwn-containerd`.
 Direct/notarized channel only (not Mac App Store viable). `--wayland-vsock-port`
 bridges the guest's Wayland session into Wawona for **any** OCI image — no
 special image required:
