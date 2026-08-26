@@ -5,6 +5,8 @@
 # IMPLEMENTED (this file is no longer a scaffold):
 #   * image management (pull/images/rmi/inspect/resolve) -> wwn-oci (Rust),
 #     universal + App-Store-compliant on every target.
+#   * search/tags -> wwn-oci Docker Hub metadata client (pure HTTPS GET,
+#     no image data; Hub API is outside the OCI distribution spec).
 #   * run  -> per-target execution backend. macOS: wwn-containerd (Apple
 #     Containerization framework, per-container VM). Other targets: honest
 #     error until their backends land (container-in-VM via wwn-vms / proot).
@@ -36,14 +38,39 @@ pkgs.writeShellApplication {
 
     IMAGE MANAGEMENT (universal - every Wawona target, incl. iOS/watchOS):
       pull <ref>            download an OCI image (digest-verified) + unpack rootfs
+      import <path>         add an image from disk (docker-archive tar.gz,
+                            OCI-archive tar, or OCI layout dir; auto-detected)
+                            --reference <name:tag> to name it
       images                list pulled images
       rmi <ref>             remove an image (keeps shared blobs)
       inspect <ref>         show image manifest/config/layers/rootfs
       resolve <ref>         print the parsed reference components
+      search <query>        search Docker Hub for images (metadata only)
+      tags <repo>           list tags of a Docker Hub repository
+                            (--matches <substr> filters tags client-side,
+                             --limit/--page page through them)
 
     LIFECYCLE (only where a Linux kernel is available):
       run <ref> [cmd...]    boot a per-container VM and run a process (macOS:
                             Apple Containerization framework via wwn-containerd)
+      run flags (macOS backend):
+        -k|--kernel <path>  Linux kernel for the VM (else WAWONA_VM_KERNEL / auto)
+        --initfs <path>     prebuilt vminitd ext4 initfs (else vminit:latest)
+        --app-root <path>   Apple container system app-data root (else
+                            $CONTAINER_APP_ROOT / ~/Library/Application Support/com.apple.container)
+        -m|--memory <MiB>   guest memory (default 1024)
+        -c|--cpus <n>       vCPUs (default 2)
+        --fs-size <MiB>     rootfs block size (default 2048)
+        --read-only         mount the rootfs read-only
+        --init              run an init process (signal fwd + zombie reaping)
+        --id <name>         container id (default wawona)
+        --wayland-vsock-port <n>  guest vsock port to bridge to Wawona (0 = off)
+        --waypipe-guest-bin <path>  host path to the Linux waypipe binary to
+                            inject into the guest (else $WAWONA_WAYPIPE_GUEST)
+        --image-archive <path>  run from a local OCI layout dir instead of a
+                            registry reference (wwn-oci import emits one)
+        --rm                accepted no-op: every run is one-shot (container is
+                            always removed when it stops)
       exec|ps|start|stop|rm|logs   NOT IMPLEMENTED YET (needs persistent session)
 
     ENVIRONMENT:
@@ -87,7 +114,7 @@ pkgs.writeShellApplication {
         usage
         exit 0
         ;;
-      pull|images|rmi|inspect|resolve)
+      pull|images|rmi|inspect|resolve|search|tags|import)
         exec wwn-oci "$cmd" "$@"
         ;;
       run)
@@ -95,8 +122,44 @@ pkgs.writeShellApplication {
           echo "container: run needs an image reference" >&2
           exit 2
         fi
+        # Parse the run flags the macOS backend (wwn-containerd) can honor,
+        # before the image ref. Flags the backend cannot honor yet are rejected
+        # explicitly - never silently dropped (COMPLIANCE: no fake execution).
+        KERNEL_ARG=""
+        INITFS_ARGS=()
+        WCD_ARGS=()
+        while [ "$#" -gt 0 ]; do
+          case "$1" in
+            -k|--kernel) KERNEL_ARG="$2"; shift 2 ;;
+            --initfs) INITFS_ARGS=(--initfs "$2"); shift 2 ;;
+            --app-root) WCD_ARGS+=(--app-root "$2"); shift 2 ;;
+            -m|--memory) WCD_ARGS+=(--memory "$2"); shift 2 ;;
+            -c|--cpus) WCD_ARGS+=(--cpus "$2"); shift 2 ;;
+            --fs-size) WCD_ARGS+=(--fs-size "$2"); shift 2 ;;
+            --read-only) WCD_ARGS+=(--read-only); shift ;;
+            --init) WCD_ARGS+=(--init); shift ;;
+            --id) WCD_ARGS+=(--id "$2"); shift 2 ;;
+            --wayland-vsock-port) WCD_ARGS+=(--wayland-vsock-port "$2"); shift 2 ;;
+            --waypipe-guest-bin) WCD_ARGS+=(--waypipe-guest-bin "$2"); shift 2 ;;
+            --image-archive) WCD_ARGS+=(--image-archive "$2"); shift 2 ;;
+            # wwn-containerd is one-shot: the container is always removed after
+            # it stops, so --rm is accepted as a no-op for CLI compatibility.
+            --rm) shift ;;
+            --mount|-v|--volume|-p|--publish|--publish-socket|--shm-size|--platform|--network|--env|-e|--dns*|--cap-*|--label|--entrypoint|--tmpfs|--rosetta|--virtualization|--ssh)
+              echo "container: '$1' is not supported by the macOS backend yet (wwn-containerd)." >&2
+              exit 3
+              ;;
+            --) shift; break ;;
+            -*) echo "container: unknown run flag '$1'" >&2; exit 2 ;;
+            *) break ;;
+          esac
+        done
         REF="$1"
         shift || true
+        # WAWONA_VM_INITFS env is the flag-less equivalent of --initfs.
+        if [ "''${#INITFS_ARGS[@]}" -eq 0 ] && [ -n "''${WAWONA_VM_INITFS:-}" ]; then
+          INITFS_ARGS=(--initfs "$WAWONA_VM_INITFS")
+        fi
         # Containerization's reference parser needs a fully-qualified ref;
         # apply Docker's shorthand heuristic (alpine -> docker.io/library/alpine).
         case "$REF" in
@@ -115,18 +178,17 @@ pkgs.writeShellApplication {
               echo "container: wwn-containerd backend not available in this build." >&2
               exit 3
             fi
-            if ! KERNEL="$(find_kernel)"; then
-              echo "container: no Linux kernel found for the VM." >&2
-              echo "  set WAWONA_VM_KERNEL=/path/to/vmlinux (or install one via" >&2
-              echo "  Apple's \`container system start --enable-kernel-install\`)." >&2
-              exit 3
-            fi
-            INITFS_ARGS=()
-            if [ -n "''${WAWONA_VM_INITFS:-}" ]; then
-              INITFS_ARGS=(--initfs "$WAWONA_VM_INITFS")
+            KERNEL="''${KERNEL_ARG:-}"
+            if [ -z "$KERNEL" ]; then
+              if ! KERNEL="$(find_kernel)"; then
+                echo "container: no Linux kernel found for the VM." >&2
+                echo "  set WAWONA_VM_KERNEL=/path/to/vmlinux (or install one via" >&2
+                echo "  Apple's \`container system start --enable-kernel-install\`)." >&2
+                exit 3
+              fi
             fi
             # Default command: the image's /bin/sh (wwn-containerd default).
-            exec wwn-containerd-run run -i "$REF" -k "$KERNEL" "''${INITFS_ARGS[@]}" "$@"
+            exec wwn-containerd-run run -i "$REF" -k "$KERNEL" "''${INITFS_ARGS[@]}" "''${WCD_ARGS[@]}" "$@"
             ;;
           *)
             echo "container: 'run' is not implemented on this platform/backend yet ($(uname -s), backend=$BACKEND)." >&2

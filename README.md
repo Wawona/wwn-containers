@@ -49,8 +49,12 @@ Rust crate at `dependencies/containers/oci-core`:
 - `spec` - OCI + Docker image-spec types and media-type constants.
 - `unpack` - apply layers to a rootfs with OCI whiteout (`.wh.`, opaque) handling
   and path-traversal guards.
+- `hub` - Docker Hub discovery client (search + tags). Hub's JSON API is not
+  part of the OCI distribution spec, so it lives apart from `registry`;
+  metadata-only HTTPS GET, no image data.
 
-CLI: `wwn-oci pull alpine:3.20 --dest ./img`, `wwn-oci resolve <ref>`.
+CLI: `wwn-oci pull alpine:3.20 --dest ./img`, `wwn-oci resolve <ref>`,
+`wwn-oci search python`, `wwn-oci tags python`.
 
 ## Apple `container` CLI (macOS only, swiftpm2nix)
 
@@ -76,7 +80,40 @@ each container runs in its own lightweight VM with `vminitd` (gRPC over vsock).
 codesign with `com.apple.security.virtualization` happen on first run via the
 host Swift toolchain - the same runtime-compile model as wwn-vms' `vz-launcher`.
 Direct/notarized channel only (not Mac App Store viable). `--wayland-vsock-port`
-forwards the guest's waypipe server into Wawona.
+bridges the guest's Wayland session into Wawona for **any** OCI image — no
+special image required:
+
+- **guest side**: the host's Linux waypipe (nixpkgs, aarch64-linux) is injected
+  into the container as a read-only file mount at `/usr/local/bin/waypipe`
+  (framework `FileMountContext` transforms file `Mount.share`s into virtiofs +
+  bind mounts), and the command is wrapped as
+  `/usr/local/bin/waypipe --no-gpu --vsock -s <port> server -- <cmd>` (with a
+  sh preamble that creates `XDG_RUNTIME_DIR`, which the C waypipe does not).
+- **host side**: after `container.start()` the backend dials the container's
+  vsock port (`dialVsock`) and spawns the host
+  `waypipe --socket-fds R,W client` on the raw fd pair (inheriting
+  `WAYLAND_DISPLAY`/`XDG_RUNTIME_DIR`), so the guest session appears as a
+  Wawona window.
+
+`--waypipe-guest-bin <path>` (or `WAWONA_WAYPIPE_GUEST`) supplies the guest
+waypipe binary; the host waypipe must be the `.#waypipe-splitfd` build —
+wwn-waypipe's macos.nix parses `--socket-fds` but cannot use it
+(`unreachable!` arms; the framework's unix-socket relay strips `SCM_RIGHTS`,
+so the raw fd is the only path) — resolved via `WWNP_WAYPIPE_BIN` or PATH. See
+`dependencies/containers/macos/waypipe-splitfd.nix` for the pending
+wwn-waypipe-upstream decision.
+
+Usage examples:
+
+```bash
+container run --wayland-vsock-port 1024 ubuntu:24.04 firefox
+container run --wayland-vsock-port 1024 gnome:latest gnome-shell --nested --wayland
+```
+
+Known limits (v1): glibc images only (musl/alpine needs a static waypipe
+build — follow-up); the entry command must be explicit (image-default Cmd
+fallback — follow-up); X11 apps need in-guest XWayland (`waypipe --xwls` —
+follow-up).
 
 ## Why depend on wwn-vms
 

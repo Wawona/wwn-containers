@@ -74,6 +74,10 @@
           inherit wwn-containerd;
           # Official Apple container CLI, deps locked with swiftpm2nix (v7).
           inherit apple-container;
+          # Host waypipe with a working --socket-fds (SplitFD) transport, for
+          # the container Wayland bridge (--wayland-vsock-port). Pending the
+          # wwn-waypipe macos.nix fix; see the file for the decision note.
+          waypipe-splitfd = pkgs.callPackage ./dependencies/containers/macos/waypipe-splitfd.nix { };
         }));
 
       registryFragment = let
