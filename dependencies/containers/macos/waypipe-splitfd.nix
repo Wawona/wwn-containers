@@ -437,6 +437,24 @@ for line in s.splitlines():
     res_lines.append(line)
 s = '\n'.join(res_lines)
 
+# 8. SplitFD client: connect directly instead of listen/accept or
+#    build_connection_command (which cannot encode a pre-connected fd).
+run_client_needle = """) -> Result<(), String> {
+    if let Some(app_id) = secctx {"""
+run_client_splitfd = """) -> Result<(), String> {
+    if let SocketSpec::SplitFD(_, _) = socket_path {
+        let link_fd = socket_connect(socket_path, cwd, false, false)?;
+        let wayland_fd = if let Some(s) = wayland_socket {
+            s
+        } else {
+            connect_to_wayland_display(cwd)?
+        };
+        return handle_client_conn(link_fd, wayland_fd, opts);
+    }
+    if let Some(app_id) = secctx {"""
+if run_client_needle in s and 'if let SocketSpec::SplitFD(_, _) = socket_path' not in s:
+    s = s.replace(run_client_needle, run_client_splitfd, 1)
+
 p.write_text(s)
 PY_EOF
 
@@ -446,6 +464,8 @@ PY_EOF
       || { echo "ERROR: SplitFD socket_connect patch did not apply" >&2; exit 1; }
     grep -q 'Arg::new("socket-fds")' src/main.rs \
       || { echo "ERROR: --socket-fds clap arg did not apply" >&2; exit 1; }
+    grep -q 'if let SocketSpec::SplitFD(_, _) = socket_path' src/main.rs \
+      || { echo "ERROR: SplitFD run_client patch did not apply" >&2; exit 1; }
   '';
 
   # Robust SDK detection (same approach as wwn-waypipe macos.nix, host-only).

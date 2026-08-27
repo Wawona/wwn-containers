@@ -216,7 +216,7 @@ extension WWNContainerd {
                         destination: "/usr/local/bin/waypipe",
                         options: ["ro"]
                     ))
-                    let wrapper = "mkdir -p \"$XDG_RUNTIME_DIR\" && chmod 0700 \"$XDG_RUNTIME_DIR\" && exec /usr/local/bin/waypipe --no-gpu --vsock -s \"$WAWONA_VSOCK_PORT\" server -- \"$@\""
+                    let wrapper = "mkdir -p \"$XDG_RUNTIME_DIR\" && chmod 0700 \"$XDG_RUNTIME_DIR\" && exec /usr/local/bin/waypipe --no-gpu -c none --vsock -s \"$WAWONA_VSOCK_PORT\" server -- \"$@\""
                     config.process.arguments = ["/bin/sh", "-c", wrapper, "wawona-waypipe"] + arguments
                     config.process.environmentVariables.append("WAYLAND_DISPLAY=wayland-0")
                     config.process.environmentVariables.append("XDG_RUNTIME_DIR=/run/user/0")
@@ -251,15 +251,14 @@ extension WWNContainerd {
             // The guest waypipe server blocks waiting for a client connection;
             // a relay failure therefore fails the run (the guest session is
             // stuck without it).
-            var relay: Foundation.Process?
+            var relayPid: pid_t?
             if port != 0 {
-                relay = try await Self.startWaypipeRelay(container: container, port: port)
+                relayPid = try await Self.startWaypipeRelay(container: container, port: port)
             }
 
             let exit = try await container.wait()
-            if let relay, relay.isRunning {
-                relay.terminate()
-                relay.waitUntilExit()
+            if let relayPid {
+                Self.stopWaypipeRelay(pid: relayPid)
             }
             Self.writeMarkerFile(environmentKey: "WAWONA_CONTAINER_DONE_FILE")
             try await container.stop()
@@ -299,7 +298,7 @@ extension WWNContainerd {
         static func startWaypipeRelay(
             container: LinuxContainer,
             port: UInt32
-        ) async throws -> Foundation.Process {
+        ) async throws -> pid_t {
             var handle: FileHandle?
             for attempt in 1...60 {
                 do {
@@ -314,29 +313,87 @@ extension WWNContainerd {
                 throw ValidationError("dialVsock returned nil")
             }
 
-            // Sockets are full-duplex: dup the fd once per direction for the
-            // R,W pair waypipe expects.
+            // Host waypipe uses `--socket-fds R,W client` in the child process.
+            // Foundation.Process does not inherit arbitrary fds on macOS, so
+            // map the dialed vsock into fixed child fds with posix_spawn.
             let base = handle.fileDescriptor
+            Self.setBlockingFd(base)
             let rfd = dup(base)
             let wfd = dup(base)
             guard rfd >= 0, wfd >= 0 else {
                 throw ValidationError("dup failed: \(String(cString: strerror(errno)))")
             }
+            Self.setBlockingFd(rfd)
+            Self.setBlockingFd(wfd)
 
             let waypipePath = ProcessInfo.processInfo.environment["WWNP_WAYPIPE_BIN"] ?? "waypipe"
-            let relay = Foundation.Process()
-            relay.executableURL = URL(fileURLWithPath: waypipePath)
-            relay.arguments = ["--socket-fds", "\(rfd),\(wfd)", "client"]
-            do {
-                try relay.run()
-            } catch {
+            guard FileManager.default.isExecutableFile(atPath: waypipePath) else {
                 throw ValidationError(
-                    "failed to spawn \(waypipePath) --socket-fds client: \(error). "
-                        + "Provide the waypipe-splitfd build via WWNP_WAYPIPE_BIN.")
+                    "waypipe not found or not executable at \(waypipePath). "
+                        + "Set WWNP_WAYPIPE_BIN to the bundled waypipe-fds binary.")
             }
+
+            // Fixed fds in the child; avoid stdin/stdout/stderr and low-number leaks.
+            let childR: Int32 = 100
+            let childW: Int32 = 101
+            let fdArg = "\(childR),\(childW)"
+
+            var fileActions: posix_spawn_file_actions_t?
+            guard posix_spawn_file_actions_init(&fileActions) == 0 else {
+                throw ValidationError("posix_spawn_file_actions_init failed")
+            }
+            defer { posix_spawn_file_actions_destroy(&fileActions) }
+
+            posix_spawn_file_actions_adddup2(&fileActions, rfd, childR)
+            posix_spawn_file_actions_adddup2(&fileActions, wfd, childW)
+            posix_spawn_file_actions_addclose(&fileActions, rfd)
+            posix_spawn_file_actions_addclose(&fileActions, wfd)
+
+            var argv: [UnsafeMutablePointer<CChar>?] = [
+                strdup(waypipePath),
+                strdup("-n"),
+                strdup("-c"),
+                strdup("none"),
+                strdup("--socket-fds"),
+                strdup(fdArg),
+                strdup("client"),
+                nil,
+            ]
+            defer {
+                for ptr in argv {
+                    if let ptr { free(ptr) }
+                }
+            }
+
+            var pid: pid_t = 0
+            let spawnErr = argv.withUnsafeMutableBufferPointer { buf in
+                posix_spawn(&pid, waypipePath, &fileActions, nil, buf.baseAddress, environ)
+            }
+            if spawnErr != 0 {
+                throw ValidationError(
+                    "posix_spawn \(waypipePath): \(String(cString: strerror(spawnErr)))")
+            }
+
             FileHandle.standardError.write(Data(
-                "[wwn-containerd] waypipe client on vsock port \(port) (fd \(base), R=\(rfd) W=\(wfd))\n".utf8))
-            return relay
+                ("[wwn-containerd] waypipe client on vsock port \(port) "
+                    + "(fd \(base), pid \(pid), --socket-fds \(fdArg))\n").utf8))
+            return pid
+        }
+
+        static func stopWaypipeRelay(pid: pid_t) {
+            guard pid > 0 else { return }
+            if kill(pid, 0) != 0 { return }
+            _ = kill(pid, SIGTERM)
+            var status: Int32 = 0
+            _ = waitpid(pid, &status, 0)
+        }
+
+        private static func setBlockingFd(_ fd: Int32) {
+            var flags = fcntl(fd, F_GETFL)
+            if flags >= 0 {
+                flags &= ~O_NONBLOCK
+                _ = fcntl(fd, F_SETFL, flags)
+            }
         }
 
         /// Write a small marker file for the host runner, if the environment
