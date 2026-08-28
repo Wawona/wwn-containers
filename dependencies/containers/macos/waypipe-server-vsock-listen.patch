@@ -1,0 +1,35 @@
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -855,7 +855,31 @@
+         .map_err(|x| tag!("Failed to run program {:?}: {}", command[0], x))?;
+     drop(sock2);
+ 
+-    let link_fd = socket_connect(socket_path, cwd, false, unlink_at_end)?;
++    let link_fd = match socket_path {
++        #[cfg(target_os = "linux")]
++        SocketSpec::VSock(_) => {
++            let (channel_socket, _cleanup) = socket_create_and_bind(
++                socket_path,
++                cwd,
++                socket::SockFlag::SOCK_CLOEXEC,
++            )?;
++            socket::listen(&channel_socket, socket::Backlog::new(1).unwrap())
++                .map_err(|x| tag!("Failed to listen to vsock: {}", x))?;
++            let conn_fd = loop {
++                match socket::accept(channel_socket.as_raw_fd()) {
++                    Ok(fd) => break unsafe { OwnedFd::from_raw_fd(fd) },
++                    Err(Errno::EINTR) => continue,
++                    Err(x) => {
++                        return Err(tag!("Failed to accept vsock: {}", x));
++                    }
++                }
++            };
++            set_cloexec(&conn_fd, true)?;
++            set_blocking(&conn_fd)?;
++            conn_fd
++        }
++        _ => socket_connect(socket_path, cwd, false, unlink_at_end)?,
++    };
+ 
+     handle_server_conn(link_fd, sock1, options, None)?;
+ 

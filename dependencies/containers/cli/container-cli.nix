@@ -67,6 +67,9 @@ pkgs.writeShellApplication {
         --wayland-vsock-port <n>  guest vsock port to bridge to Wawona (0 = off)
         --waypipe-guest-bin <path>  host path to the Linux waypipe binary to
                             inject into the guest (else $WAWONA_WAYPIPE_GUEST)
+        --waypipe-guest-root <dir>      relocatable guest tree (bin/ + lib/)
+        --waypipe-guest-closure <file>  nix store paths to mount for that
+                            binary (else sibling .closure / $WAWONA_WAYPIPE_GUEST_CLOSURE)
         --image-archive <path>  run from a local OCI layout dir instead of a
                             registry reference (wwn-oci import emits one)
         --rm                accepted no-op: every run is one-shot (container is
@@ -152,6 +155,8 @@ pkgs.writeShellApplication {
             --id) WCD_ARGS+=(--id "$2"); shift 2 ;;
             --wayland-vsock-port) WCD_ARGS+=(--wayland-vsock-port "$2"); shift 2 ;;
             --waypipe-guest-bin) WCD_ARGS+=(--waypipe-guest-bin "$2"); shift 2 ;;
+            --waypipe-guest-root) WCD_ARGS+=(--waypipe-guest-root "$2"); shift 2 ;;
+            --waypipe-guest-closure) WCD_ARGS+=(--waypipe-guest-closure "$2"); shift 2 ;;
             --image-archive) WCD_ARGS+=(--image-archive "$2"); shift 2 ;;
             # wwn-containerd is one-shot: the container is always removed after
             # it stops, so --rm is accepted as a no-op for CLI compatibility.

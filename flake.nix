@@ -78,7 +78,19 @@
           # the container Wayland bridge (--wayland-vsock-port). Pending the
           # wwn-waypipe macos.nix fix; see the file for the decision note.
           waypipe-splitfd = pkgs.callPackage ./dependencies/containers/macos/waypipe-splitfd.nix { };
-        }));
+        }) // {
+          # Relocatable aarch64-linux waypipe tree (single virtiofs share).
+          # Built with host patchelf + linux waypipe/libs; available on Darwin
+          # and Linux evals so Wawona can bundle it into the macOS app.
+          waypipe-guest-root =
+            let
+              linuxPkgs = pkgsFor "aarch64-linux";
+              waypipeGuest = linuxPkgs.callPackage ./dependencies/containers/macos/waypipe-guest-vsock.nix { };
+            in
+            pkgs.callPackage ./dependencies/containers/macos/waypipe-guest-root.nix {
+              waypipe = waypipeGuest;
+            };
+        });
 
       registryFragment = let
         reg = dir + "/registry";

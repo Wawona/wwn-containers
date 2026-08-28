@@ -106,6 +106,18 @@ extension WWNContainerd {
         @Option(name: .customLong("waypipe-guest-bin"), help: "Host path to the guest waypipe binary to inject (default: $WAWONA_WAYPIPE_GUEST)")
         var waypipeGuestBin: String?
 
+        // Prefer a relocatable guest tree (bin/ + lib/ with patchelf'd RPATH)
+        // mounted once at /opt/wawona-waypipe. Avoids hundreds of virtiofs
+        // shares for a nix store closure (Apple Containerization fails those).
+        @Option(name: .customLong("waypipe-guest-root"), help: "Host directory with bin/waypipe + lib/ (mounted at /opt/wawona-waypipe)")
+        var waypipeGuestRoot: String?
+
+        // Fallback: newline-separated host nix store paths share-mounted at the
+        // same absolute paths. Prefer --waypipe-guest-root. Auto-load
+        // `<waypipe-guest-bin>.closure` / $WAWONA_WAYPIPE_GUEST_CLOSURE.
+        @Option(name: .customLong("waypipe-guest-closure"), help: "File listing nix store paths to mount for guest waypipe")
+        var waypipeGuestClosure: String?
+
         @Argument(parsing: .captureForPassthrough)
         var arguments: [String] = ["/bin/sh"]
 
@@ -211,14 +223,56 @@ extension WWNContainerd {
                 // lack /run/user/0).
                 if port != 0 {
                     let guestWaypipe = try Self.resolveGuestWaypipeBin(waypipeGuestBin)
-                    config.mounts.append(.share(
-                        source: guestWaypipe,
-                        destination: "/usr/local/bin/waypipe",
-                        options: ["ro"]
-                    ))
-                    let wrapper = "mkdir -p \"$XDG_RUNTIME_DIR\" && chmod 0700 \"$XDG_RUNTIME_DIR\" && exec /usr/local/bin/waypipe --no-gpu --vsock -s \"$WAWONA_VSOCK_PORT\" server -- \"$@\""
-                    config.process.arguments = ["/bin/sh", "-c", wrapper, "wawona-waypipe"] + arguments
-                    config.process.environmentVariables.append("WAYLAND_DISPLAY=wayland-0")
+                    let guestRoot = Self.resolveGuestWaypipeRoot(
+                        flagValue: waypipeGuestRoot,
+                        guestBin: guestWaypipe
+                    )
+                    let execPath: String
+                    if let guestRoot {
+                        // One share: relocatable tree with interpreter + libs.
+                        config.mounts.append(.share(
+                            source: guestRoot,
+                            destination: "/opt/wawona-waypipe",
+                            options: ["ro"]
+                        ))
+                        execPath = "/opt/wawona-waypipe/bin/waypipe"
+                    } else {
+                        let storeExec = Self.resolveGuestWaypipeStoreExec(guestWaypipe)
+                        let closurePaths = try Self.resolveGuestWaypipeClosure(
+                            flagValue: waypipeGuestClosure,
+                            guestBin: guestWaypipe
+                        )
+                        for path in closurePaths {
+                            config.mounts.append(.share(
+                                source: path,
+                                destination: path,
+                                options: ["ro"]
+                            ))
+                        }
+                        config.mounts.append(.share(
+                            source: guestWaypipe,
+                            destination: "/usr/local/bin/waypipe",
+                            options: ["ro"]
+                        ))
+                        execPath = storeExec ?? "/usr/local/bin/waypipe"
+                    }
+                    // Oneshot + vsock: patched guest waypipe binds/listens so
+                    // host dialVsock can connect (upstream oneshot server dials).
+                    // -c none matches the host waypipe-fds client.
+                    config.process.arguments =
+                        [
+                            "/bin/sh", "-c",
+                            "mkdir -p \"$XDG_RUNTIME_DIR\" && chmod 0700 \"$XDG_RUNTIME_DIR\" && exec \"$@\"",
+                            "wawona-waypipe",
+                            execPath,
+                            "--oneshot",
+                            "--no-gpu",
+                            "-c", "none",
+                            "--vsock",
+                            "-s", "\(port)",
+                            "server",
+                            "--",
+                        ] + arguments
                     config.process.environmentVariables.append("XDG_RUNTIME_DIR=/run/user/0")
                     config.process.environmentVariables.append("WAWONA_VSOCK_PORT=\(port)")
                 }
@@ -252,8 +306,17 @@ extension WWNContainerd {
             // a relay failure therefore fails the run (the guest session is
             // stuck without it).
             var relayPid: pid_t?
+            var relayError: Error?
             if port != 0 {
-                relayPid = try await Self.startWaypipeRelay(container: container, port: port)
+                do {
+                    relayPid = try await Self.startWaypipeRelay(container: container, port: port)
+                } catch {
+                    // Keep the guest alive long enough for stderr to flush, and
+                    // surface the dial failure after wait() so wrapper debug is
+                    // not lost when guest waypipe dies immediately.
+                    relayError = error
+                    fputs("waypipe relay failed: \(error)\n", stderr)
+                }
             }
 
             let exit = try await container.wait()
@@ -262,6 +325,9 @@ extension WWNContainerd {
             }
             Self.writeMarkerFile(environmentKey: "WAWONA_CONTAINER_DONE_FILE")
             try await container.stop()
+            if let relayError {
+                throw relayError
+            }
             if exit.exitCode != 0 {
                 throw ExitCode(Int32(exit.exitCode))
             }
@@ -289,6 +355,79 @@ extension WWNContainerd {
             throw ValidationError(
                 "the Wayland bridge needs a guest waypipe binary: pass --waypipe-guest-bin "
                     + "or set WAWONA_WAYPIPE_GUEST (e.g. nixpkgs waypipe for aarch64-linux)")
+        }
+
+        /// Relocatable guest tree: flag / env / sibling `waypipe-guest-root`
+        /// (or `<bin>-root`) containing `bin/waypipe`.
+        static func resolveGuestWaypipeRoot(
+            flagValue: String?,
+            guestBin: String
+        ) -> String? {
+            var candidates: [String] = []
+            if let raw = flagValue, !raw.isEmpty {
+                candidates.append((raw as NSString).expandingTildeInPath)
+            }
+            if let env = ProcessInfo.processInfo.environment["WAWONA_WAYPIPE_GUEST_ROOT"],
+               !env.isEmpty
+            {
+                candidates.append(env)
+            }
+            let fm = FileManager.default
+            let binURL = URL(fileURLWithPath: guestBin)
+            candidates.append(binURL.deletingLastPathComponent()
+                .appendingPathComponent("waypipe-guest-root").path)
+            candidates.append(guestBin + "-root")
+            for path in candidates {
+                let exec = (path as NSString).appendingPathComponent("bin/waypipe")
+                if fm.isExecutableFile(atPath: exec) {
+                    return path
+                }
+            }
+            return nil
+        }
+
+        /// Optional original nix store path for the guest waypipe executable
+        /// (`waypipe-guest.store` next to the copied binary). Prefer executing
+        /// that path after mounting the closure so DT_NEEDED resolves.
+        static func resolveGuestWaypipeStoreExec(_ guestBin: String) -> String? {
+            let storeFile = guestBin + ".store"
+            guard let raw = try? String(contentsOfFile: storeFile, encoding: .utf8) else {
+                return nil
+            }
+            let path = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !path.isEmpty, FileManager.default.isExecutableFile(atPath: path) else {
+                return nil
+            }
+            return path
+        }
+
+        /// Load newline-separated nix store paths to share-mount for the guest
+        /// waypipe dynamic linker. Flag / env / sibling `.closure` file.
+        static func resolveGuestWaypipeClosure(
+            flagValue: String?,
+            guestBin: String
+        ) throws -> [String] {
+            var filePath: String?
+            if let raw = flagValue, !raw.isEmpty {
+                filePath = (raw as NSString).expandingTildeInPath
+            } else if let env = ProcessInfo.processInfo.environment["WAWONA_WAYPIPE_GUEST_CLOSURE"],
+                      !env.isEmpty
+            {
+                filePath = env
+            } else {
+                let sibling = guestBin + ".closure"
+                if FileManager.default.fileExists(atPath: sibling) {
+                    filePath = sibling
+                }
+            }
+            guard let filePath else { return [] }
+            guard FileManager.default.fileExists(atPath: filePath) else {
+                throw ValidationError("waypipe-guest-closure: no such file: \(filePath)")
+            }
+            let text = try String(contentsOfFile: filePath, encoding: .utf8)
+            return text.split(whereSeparator: \.isNewline)
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && FileManager.default.fileExists(atPath: $0) }
         }
 
         /// Dial the guest vsock port (retrying until the guest waypipe server
