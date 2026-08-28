@@ -79,7 +79,9 @@ extension WWNContainerd {
         var memory: UInt64 = 1024
 
         @Option(name: .customLong("fs-size"), help: "Rootfs block size (MiB)")
-        var fsSizeInMB: UInt64 = 2048
+        // Desktop/Wayland bridge runs often pull clients inside the guest
+        // (nixpkgs weston, etc.); 2 GiB fills during fetch.
+        var fsSizeInMB: UInt64 = 8192
 
         @Flag(name: .customLong("rosetta"), help: "Enable Rosetta x86_64 emulation")
         var rosetta = false
