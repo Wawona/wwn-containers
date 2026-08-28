@@ -216,7 +216,7 @@ extension WWNContainerd {
                         destination: "/usr/local/bin/waypipe",
                         options: ["ro"]
                     ))
-                    let wrapper = "mkdir -p \"$XDG_RUNTIME_DIR\" && chmod 0700 \"$XDG_RUNTIME_DIR\" && exec /usr/local/bin/waypipe --no-gpu -c none --vsock -s \"$WAWONA_VSOCK_PORT\" server -- \"$@\""
+                    let wrapper = "mkdir -p \"$XDG_RUNTIME_DIR\" && chmod 0700 \"$XDG_RUNTIME_DIR\" && exec /usr/local/bin/waypipe --no-gpu --vsock -s \"$WAWONA_VSOCK_PORT\" server -- \"$@\""
                     config.process.arguments = ["/bin/sh", "-c", wrapper, "wawona-waypipe"] + arguments
                     config.process.environmentVariables.append("WAYLAND_DISPLAY=wayland-0")
                     config.process.environmentVariables.append("XDG_RUNTIME_DIR=/run/user/0")
@@ -312,6 +312,11 @@ extension WWNContainerd {
             guard let handle else {
                 throw ValidationError("dialVsock returned nil")
             }
+
+            // Guest waypipe binds vsock and writes the connection header after
+            // the container process starts. Dial succeeding only means the port
+            // is open; give the server a moment before the host client reads.
+            try await Task.sleep(nanoseconds: 2_000_000_000)
 
             // Host waypipe uses `--socket-fds R,W client` in the child process.
             // Foundation.Process does not inherit arbitrary fds on macOS, so

@@ -455,6 +455,21 @@ run_client_splitfd = """) -> Result<(), String> {
 if run_client_needle in s and 'if let SocketSpec::SplitFD(_, _) = socket_path' not in s:
     s = s.replace(run_client_needle, run_client_splitfd, 1)
 
+relax_needle = """    if comp != expected_comp {
+        error!("Rejecting connection header {:x} due to compression type mismatch: header has {:x} != own {:x}", header, comp, expected_comp);
+        return Err(tag!("Header compression failure"));
+    }"""
+relax_repl = """    if comp != expected_comp {
+        // Guest nixpkgs waypipe on aarch64-linux can send comp=0 (unset bits)
+        // even with -c lz4/-c none. Accept it when the negotiated mode matches.
+        if comp != 0 {
+            error!("Rejecting connection header {:x} due to compression type mismatch: header has {:x} != own {:x}", header, comp, expected_comp);
+            return Err(tag!("Header compression failure"));
+        }
+    }"""
+if relax_needle in s:
+    s = s.replace(relax_needle, relax_repl, 1)
+
 p.write_text(s)
 PY_EOF
 
