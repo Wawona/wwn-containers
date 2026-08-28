@@ -60,7 +60,7 @@ pkgs.writeShellApplication {
                             $CONTAINER_APP_ROOT / ~/Library/Application Support/com.apple.container)
         -m|--memory <MiB>   guest memory (default 1024)
         -c|--cpus <n>       vCPUs (default 2)
-        --fs-size <MiB>     rootfs block size (default 2048)
+        --fs-size <MiB>     rootfs block size (default 8192)
         --read-only         mount the rootfs read-only
         --init              run an init process (signal fwd + zombie reaping)
         --id <name>         container id (default wawona)
