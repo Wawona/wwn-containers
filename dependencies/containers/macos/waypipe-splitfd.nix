@@ -1,22 +1,12 @@
-# Wawona host waypipe with a WORKING SplitFD transport.
+# Wawona host waypipe with SplitFD (--socket-fds) for container vsock.
 #
-# Why this exists: wwn-waypipe's macos.nix patches the Rust port so that
-# `--socket-fds R,W` parses, but its socket_connect arm is
-#   `unreachable!("SplitFD is not used on macOS")`
-# so the flag can never actually work on the host. The containerization
-# framework's vsock can only be reached from the host process as an fd
-# (dialVsock) — there is no /dev/vsock on macOS — and its unix-socket relay
-# (BidirectionalRelay) is a byte pipe that strips SCM_RIGHTS, so waypipe must
-# sit directly on the dialed fd. SplitFD is therefore the ONLY host transport
-# for the container Wayland bridge (`--wayland-vsock-port`).
+# Prefer wwn-waypipe `macos.nix` (IOSurface dmabuf + SplitFD) as the product
+# `waypipe-fds` binary. Wawona's flake sets
+# `containerWaypipeFds = toolchains.buildForMacOS "waypipe"`.
 #
-# (Also note: macos.nix's --socket-fds parsing needle targets a manual arg
-# loop that does not exist in the v0.11.0 Rust port — it uses clap — so the
-# flag would not even parse. This build adds it via clap instead.)
-#
-# Pending decision: land the same fix in wwn-waypipe/dependencies/libs/waypipe/
-# macos.nix (needs that repo's approval) and drop this variant, or keep it as
-# the wwn-containers-owned container-vsock waypipe.
+# This recipe remains a SHM-only SplitFD fallback for standalone
+# wwn-containers builds that do not pull wwn-waypipe. Do not treat it as the
+# GPU transport path.
 {
   pkgs,
   lib,
@@ -57,9 +47,7 @@ pkgs.rustPlatform.buildRustPackage rec {
     libiconv
   ];
 
-  # Mirror wwn-waypipe macos.nix: lz4+zstd, no video/Vulkan. dmabuf is omitted
-  # on purpose — the spike renders software-only wl_shm and the guest waypipe
-  # runs --no-gpu, so no dmabuf (and no IOSurface patch) is needed.
+  # SHM-only fallback (lz4+zstd). Product GPU path is wwn-waypipe macos.nix.
   buildNoDefaultFeatures = true;
   buildFeatures = [ "lz4" "zstd" ];
 

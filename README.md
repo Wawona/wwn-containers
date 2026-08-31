@@ -70,6 +70,29 @@ nix build .#apple-container
 ./result/bin/container --help
 ```
 
+## Prebaked desktop OCI (`wawona-container-desktop`)
+
+Linux package (build on `aarch64-linux` or via
+`nix build .#packages.aarch64-linux.wawona-container-desktop` from Darwin when
+cross is available). Includes weston-flower, sway, Hyprland, foot, labwc, weston,
+kwin, and ghostty when present in nixpkgs. Wawona CLI recipes
+(`Wawona run flower|sway|hyprland|ghostty`) invoke those binaries **without**
+`nix shell` at Start.
+
+```bash
+nix build .#packages.aarch64-linux.wawona-container-desktop
+container import ./result --reference wawona-container-desktop:latest
+container run --rm --image-archive ~/.local/share/wwn-oci/oci-layout/<manifest-hex> \
+  wawona-container-desktop:latest weston-flower
+```
+
+Wawona CLI recipes auto-attach `--image-archive` when that import is present
+under `~/.local/share/wwn-oci` (avoids a Docker Hub pull for a local-only tag).
+
+Optional product-build: copy the OCI layout into
+`Wawona.app/Contents/Resources/oci/wawona-container-desktop/` so Machines can
+use `--image-archive` with no registry pull.
+
 ## macOS execution backend (wwn-containerd)
 
 `dependencies/containers/macos` is a SwiftPM package (`wwn-containerd`) built on
@@ -88,20 +111,20 @@ special image required:
   into the container as a read-only file mount at `/usr/local/bin/waypipe`
   (framework `FileMountContext` transforms file `Mount.share`s into virtiofs +
   bind mounts), and the command is wrapped as
-  `/usr/local/bin/waypipe --no-gpu --vsock -s <port> server -- <cmd>` (with a
-  sh preamble that creates `XDG_RUNTIME_DIR`, which the C waypipe does not).
+  `/usr/local/bin/waypipe --vsock -s <port> server -- <cmd>` (GPU/dmabuf
+  allowed; `--no-gpu` only when `WAWONA_WAYPIPE_NO_GPU=1` / Disable GPU), with a
+  sh preamble that creates `XDG_RUNTIME_DIR`.
 - **host side**: after `container.start()` the backend dials the container's
   vsock port (`dialVsock`) and spawns the host
   `waypipe --socket-fds R,W client` on the raw fd pair (inheriting
-  `WAYLAND_DISPLAY`/`XDG_RUNTIME_DIR`), so the guest session appears as a
-  Wawona window.
+  `WAYLAND_DISPLAY`/`XDG_RUNTIME_DIR` and Vulkan ICD env), so the guest session
+  appears as a Wawona window.
 
 `--waypipe-guest-bin <path>` (or `WAWONA_WAYPIPE_GUEST`) supplies the guest
-waypipe binary; the host waypipe must be the `.#waypipe-splitfd` build —
-wwn-waypipe's macos.nix parses `--socket-fds` but cannot use it
-(`unreachable!` arms; the framework's unix-socket relay strips `SCM_RIGHTS`,
-so the raw fd is the only path) — resolved via `WWNP_WAYPIPE_BIN` or PATH. See
-`dependencies/containers/macos/waypipe-splitfd.nix` for the pending
+waypipe binary; the host waypipe must support SplitFD (`--socket-fds`) —
+product path is wwn-waypipe macos.nix (IOSurface dmabuf + SplitFD), bundled as
+`waypipe-fds`. Resolve via `WWNP_WAYPIPE_BIN` or PATH. See
+`dependencies/containers/macos/waypipe-splitfd.nix` for the SHM-only fallback.
 wwn-waypipe-upstream decision.
 
 Usage examples:

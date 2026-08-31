@@ -59,6 +59,13 @@
             if pkgs.stdenv.hostPlatform.isDarwin
             then pkgs.callPackage ./dependencies/containers/macos/apple-container.nix { }
             else null;
+          # Prebaked desktop guest (linux only). Darwin evals expose the
+          # aarch64-linux package via packages.aarch64-linux so product-build
+          # can `nix build …#packages.aarch64-linux.wawona-container-desktop`.
+          wawona-container-desktop =
+            if pkgs.stdenv.hostPlatform.isLinux
+            then pkgs.callPackage ./dependencies/containers/images/desktop-image.nix { }
+            else null;
         in {
           inherit wwn-oci;
           default = wwn-oci;
@@ -68,15 +75,16 @@
           container-cli = pkgs.callPackage ./dependencies/containers/cli/container-cli.nix {
             inherit wwn-oci wwn-containerd;
           };
-        } // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+        } // (pkgs.lib.optionalAttrs (wawona-container-desktop != null) {
+          inherit wawona-container-desktop;
+        }) // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           # macOS execution backend (Apple Containerization.framework). Built
           # at nix build time; no runtime Swift compile (see wwn-containerd.nix).
           inherit wwn-containerd;
           # Official Apple container CLI, deps locked with swiftpm2nix (v7).
           inherit apple-container;
-          # Host waypipe with a working --socket-fds (SplitFD) transport, for
-          # the container Wayland bridge (--wayland-vsock-port). Pending the
-          # wwn-waypipe macos.nix fix; see the file for the decision note.
+          # Host waypipe SplitFD fallback (SHM-only). Product GPU path is
+          # wwn-waypipe macos.nix (Wawona bundles that as waypipe-fds).
           waypipe-splitfd = pkgs.callPackage ./dependencies/containers/macos/waypipe-splitfd.nix { };
         }) // {
           # Relocatable aarch64-linux waypipe tree (single virtiofs share).

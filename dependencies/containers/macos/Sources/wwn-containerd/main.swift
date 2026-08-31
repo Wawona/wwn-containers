@@ -282,20 +282,27 @@ extension WWNContainerd {
                     // Oneshot + vsock: patched guest waypipe binds/listens so
                     // host dialVsock can connect (upstream oneshot server dials).
                     // -c none matches the host waypipe-fds client.
+                    // GPU/dmabuf is default; --no-gpu only when WAWONA_WAYPIPE_NO_GPU=1
+                    // (Wawona Machines Disable GPU / WaypipeNoGpu).
+                    let forceNoGpu = Self.envTruthy("WAWONA_WAYPIPE_NO_GPU")
+                    var waypipeServer: [String] = [
+                        execPath,
+                        "--oneshot",
+                        "-c", "none",
+                        "--vsock",
+                        "-s", "\(port)",
+                        "server",
+                        "--",
+                    ]
+                    if forceNoGpu {
+                        waypipeServer.insert("--no-gpu", at: 1)
+                    }
                     config.process.arguments =
                         [
                             "/bin/sh", "-c",
                             "mkdir -p \"$XDG_RUNTIME_DIR\" && chmod 0700 \"$XDG_RUNTIME_DIR\" && exec \"$@\"",
                             "wawona-waypipe",
-                            execPath,
-                            "--oneshot",
-                            "--no-gpu",
-                            "-c", "none",
-                            "--vsock",
-                            "-s", "\(port)",
-                            "server",
-                            "--",
-                        ] + processArguments
+                        ] + waypipeServer + processArguments
                     config.process.environmentVariables.append("XDG_RUNTIME_DIR=/run/user/0")
                     config.process.environmentVariables.append("WAWONA_VSOCK_PORT=\(port)")
                 }
@@ -320,10 +327,9 @@ extension WWNContainerd {
             // the host waypipe client directly on the raw fd pair. The
             // framework's unix-socket relay is a byte pipe that strips
             // SCM_RIGHTS (BidirectionalRelay), so the fd handoff
-            // (--socket-fds) is the only transport that carries wl_shm fds.
-            // The host waypipe must be the waypipe-splitfd build (wwn-waypipe
-            // macos.nix parses --socket-fds but cannot use it). Resolve it via
-            // WWNP_WAYPIPE_BIN (Wawona's bundled binary) or PATH.
+            // (--socket-fds) is the only transport that carries wl_shm/dmabuf
+            // fds. Host waypipe must support SplitFD (wwn-waypipe macos.nix /
+            // waypipe-fds). Resolve via WWNP_WAYPIPE_BIN or PATH.
             //
             // The guest waypipe server blocks waiting for a client connection;
             // a relay failure therefore fails the run (the guest session is
@@ -531,16 +537,17 @@ extension WWNContainerd {
             posix_spawn_file_actions_addclose(&fileActions, rfd)
             posix_spawn_file_actions_addclose(&fileActions, wfd)
 
-            var argv: [UnsafeMutablePointer<CChar>?] = [
-                strdup(waypipePath),
-                strdup("-n"),
-                strdup("-c"),
-                strdup("none"),
-                strdup("--socket-fds"),
-                strdup(fdArg),
-                strdup("client"),
-                nil,
-            ]
+            // GPU/dmabuf default; -n/--no-gpu only when Disable GPU is set.
+            let forceNoGpu = Self.envTruthy("WAWONA_WAYPIPE_NO_GPU")
+            var argvStrings = [waypipePath]
+            if forceNoGpu {
+                argvStrings.append("-n")
+            }
+            argvStrings.append(contentsOf: [
+                "-c", "none", "--socket-fds", fdArg, "client",
+            ])
+            var argv: [UnsafeMutablePointer<CChar>?] =
+                argvStrings.map { strdup($0) } + [nil]
             defer {
                 for ptr in argv {
                     if let ptr { free(ptr) }
@@ -556,10 +563,21 @@ extension WWNContainerd {
                     "posix_spawn \(waypipePath): \(String(cString: strerror(spawnErr)))")
             }
 
+            let mode = forceNoGpu ? "no-gpu" : "gpu"
             FileHandle.standardError.write(Data(
                 ("[wwn-containerd] waypipe client on vsock port \(port) "
-                    + "(fd \(base), pid \(pid), --socket-fds \(fdArg))\n").utf8))
+                    + "(fd \(base), pid \(pid), --socket-fds \(fdArg), \(mode))\n").utf8))
             return pid
+        }
+
+        /// True when env is set to a common truthy value (1/true/yes/on).
+        static func envTruthy(_ key: String) -> Bool {
+            guard let raw = ProcessInfo.processInfo.environment[key]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),
+                !raw.isEmpty
+            else { return false }
+            return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
         }
 
         static func stopWaypipeRelay(pid: pid_t) {

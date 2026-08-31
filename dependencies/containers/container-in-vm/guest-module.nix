@@ -8,7 +8,8 @@
 #   host (Wawona)  <-- vsock+waypipe --  guest cage compositor  <-- wayland --  OCI container app
 #
 # The OCI bundle (rootfs + config.json, produced by the Rust `wwn-oci` core on
-# the host) is shared into the guest read-only over virtiofs (tag `oci-bundle`).
+# the host) is shared into the guest read-only over 9p (QEMU `-virtfs` mount_tag
+# `oci-bundle`; Linux hosts may use virtiofs with the same tag).
 # The guest runs it with crun against a shared XDG_RUNTIME_DIR so the container's
 # Wayland client reaches the guest compositor, whose framebuffer waypipe streams
 # to the host.
@@ -27,12 +28,14 @@ in
   };
   environment.systemPackages = with pkgs; [ crun podman waypipe cage foot ];
 
-  # Mount the host-provided OCI bundle over virtiofs (populated by wwn-oci on the
-  # host). The wwn-vms engine attaches the virtiofs share with tag `oci-bundle`.
+  # Mount the host-provided OCI bundle. Prefer virtiofs (Linux hosts); fall
+  # back to 9p (QEMU `-virtfs`, iOS/macOS TCTI/HVF) with the same mount_tag.
+  # The OCI bundle (rootfs + config.json, produced by the Rust `wwn-oci` core on
+  # the host) is shared into the guest read-only (tag `oci-bundle`).
   fileSystems.${bundleMount} = {
     device = "oci-bundle";
-    fsType = "virtiofs";
-    options = [ "ro" "nofail" ];
+    fsType = "9p";
+    options = [ "trans=virtio" "version=9p2000.L" "ro" "nofail" ];
   };
 
   # 1) Headless compositor whose output is streamed to the host by waypipe.
