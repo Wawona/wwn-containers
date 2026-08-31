@@ -189,6 +189,16 @@ extension WWNContainerd {
                 effectiveReference = imageReference
             }
 
+            // captureForPassthrough keeps a leading "--" that shells use to end
+            // option parsing. Apple's vmexec would try to exec that token.
+            var processArguments = arguments
+            if processArguments.first == "--" {
+                processArguments.removeFirst()
+            }
+            if processArguments.isEmpty {
+                processArguments = ["/bin/sh"]
+            }
+
             let container = try await manager.create(
                 id,
                 reference: effectiveReference,
@@ -201,7 +211,7 @@ extension WWNContainerd {
                 if let terminal {
                     config.process.setTerminalIO(terminal: terminal)
                 }
-                config.process.arguments = arguments
+                config.process.arguments = processArguments
                 config.process.workingDirectory = cwd
                 config.useInit = self.`init`
 
@@ -274,7 +284,7 @@ extension WWNContainerd {
                             "-s", "\(port)",
                             "server",
                             "--",
-                        ] + arguments
+                        ] + processArguments
                     config.process.environmentVariables.append("XDG_RUNTIME_DIR=/run/user/0")
                     config.process.environmentVariables.append("WAWONA_VSOCK_PORT=\(port)")
                 }
