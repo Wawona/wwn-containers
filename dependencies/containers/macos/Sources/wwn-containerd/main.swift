@@ -199,6 +199,17 @@ extension WWNContainerd {
                 processArguments = ["/bin/sh"]
             }
 
+            // One-shot runs can leave a named VM if the previous process was
+            // killed before defer delete. Always clear the id first so Machines
+            // Start / CLI re-run is not blocked by "already exists".
+            do {
+                try await manager.delete(id)
+            } catch {
+                Self.removeStaleContainerRecord(id: id)
+            }
+            // delete() can no-op while an on-disk record still blocks create.
+            Self.removeStaleContainerRecord(id: id)
+
             let container = try await manager.create(
                 id,
                 reference: effectiveReference,
@@ -367,6 +378,21 @@ extension WWNContainerd {
             throw ValidationError(
                 "the Wayland bridge needs a guest waypipe binary: pass --waypipe-guest-bin "
                     + "or set WAWONA_WAYPIPE_GUEST (e.g. nixpkgs waypipe for aarch64-linux)")
+        }
+
+        /// Remove leftover on-disk Containerization records when a prior run
+        /// was killed before `manager.delete`. Without this, create fails with
+        /// "couldn't be saved … because a file with the same name already exists."
+        static func removeStaleContainerRecord(id: String) {
+            let fm = FileManager.default
+            let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            let base = support?
+                .appendingPathComponent("com.apple.containerization")
+                .appendingPathComponent("containers")
+                .appendingPathComponent(id)
+            if let base, fm.fileExists(atPath: base.path) {
+                try? fm.removeItem(at: base)
+            }
         }
 
         /// Relocatable guest tree: flag / env / sibling `waypipe-guest-root`
