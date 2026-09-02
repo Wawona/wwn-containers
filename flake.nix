@@ -95,8 +95,12 @@
               linuxPkgs = pkgsFor "aarch64-linux";
               waypipeGuest = linuxPkgs.callPackage ./dependencies/containers/macos/waypipe-guest-vsock.nix { };
             in
+            # Host pkgs.runCommand + patchelf; linux waypipe + Vulkan/lavapipe
+            # are aarch64-linux store paths copied into the relocatable tree.
             pkgs.callPackage ./dependencies/containers/macos/waypipe-guest-root.nix {
               waypipe = waypipeGuest;
+              vulkan-loader = linuxPkgs.vulkan-loader;
+              mesa = linuxPkgs.mesa;
             };
         });
 

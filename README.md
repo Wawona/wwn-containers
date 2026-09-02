@@ -127,17 +127,42 @@ product path is wwn-waypipe macos.nix (IOSurface dmabuf + SplitFD), bundled as
 `dependencies/containers/macos/waypipe-splitfd.nix` for the SHM-only fallback.
 wwn-waypipe-upstream decision.
 
-Usage examples:
+### GPU / OpenGL / Vulkan (macOS containers)
 
-```bash
-container run --wayland-vsock-port 1024 ubuntu:24.04 firefox
-container run --wayland-vsock-port 1024 gnome:latest gnome-shell --nested --wayland
-```
+Apple Containerization VMs expose **no `/dev/dri`**. Guest waypipe's default
+GPU/dmabuf path `dlopen`s `libvulkan.so.1`; if that fails it **fatals the
+Wayland display** (every client dies, not only GL). `waypipe-guest-root` must
+therefore ship `libvulkan.so.1` plus a lavapipe ICD under
+`/opt/wawona-waypipe/` (see `waypipe-guest-root.nix`). Until that tree is
+present, `wwn-containerd` auto-falls back to `--no-gpu` (SHM) on **both**
+guest server and host client, and logs a one-line warning.
 
-Known limits (v1): glibc images only (musl/alpine needs a static waypipe
-build — follow-up); the entry command must be explicit (image-default Cmd
-fallback — follow-up); X11 apps need in-guest XWayland (`waypipe --xwls` —
-follow-up).
+OpenGL apps still need a guest GLES/GL stack that can allocate buffers without
+a DRM node (software Mesa llvmpipe, or lavapipe+zink), or a future virtio-gpu.
+Proven on Alpine over GPU waypipe: `apk add mesa-egl mesa-dri-gallium
+weston-clients` then `LIBGL_ALWAYS_SOFTWARE=1 weston-simple-egl` (~57 fps in
+CLI smoke). `eglinfo` Wayland platform reports `llvmpipe`. Host IOSurface
+dmabuf remoting is ready once the guest produces dmabufs; soft GL may still
+travel as SHM inside the GPU waypipe session.
+
+Vulkan: guest-root lavapipe is for **waypipe's** dmabuf path. Image
+`vulkaninfo --summary` works headless after `unset WAYLAND_SOCKET` (with the
+socket set, some vulkan-tools builds segfault during WSI probe). Bookworm
+`vkcube` is X11-only; prefer a Wayland WSI cube when packaging demos.
+
+`wwn-containerd` does **not** export `LD_LIBRARY_PATH=/opt/wawona-waypipe/lib`
+into the guest session. That tree is glibc; Alpine/musl `apk` and image
+binaries break if they load those libs (`__snprintf_chk: symbol not found`).
+Guest waypipe finds Vulkan via its own `RPATH` plus `VK_ICD_FILENAMES`. The
+user command is started with `env -u VK_ICD_FILENAMES -u VK_DRIVER_FILES` so
+image Mesa is not forced onto the nix lavapipe ICD. Musl images can
+`apk add mesa-*` / `vulkan-tools` for client GL/VK; glibc images may set
+`LD_LIBRARY_PATH` / `VK_ICD_FILENAMES` themselves if they want the bundled
+lavapipe.
+
+Known limits (v1): guest waypipe is glibc/patchelf (not a musl static build);
+image entry command must be explicit (image-default Cmd fallback — follow-up);
+X11 apps need in-guest XWayland (`waypipe --xwls` — follow-up).
 
 ## Why depend on wwn-vms
 

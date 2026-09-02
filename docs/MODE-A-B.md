@@ -61,6 +61,14 @@ APT for native tweaks. Do not merge indexes.
 | 3 | Mode B JIT run path + Sileo IPA wiring |
 | 4 | Docker Hub demo image documented for both modes |
 
+## Parity status (2026-08)
+
+| Item | Status |
+|------|--------|
+| Prebaked `wawona-container-desktop` flake package | done (`.#packages.aarch64-linux.wawona-container-desktop`; Wawona recipes use plain entry + `--image-archive`) |
+| Guest OCI share | 9p mount_tag `oci-bundle` (QEMU `-virtfs`) |
+| Mode A run path | `WWNContainerRunner` → stage bundle → `WWNMobileVmEngine` TCG |
+
 ## Success
 
 - Mode A: `container pull` + run alpine-class image via jitless VM.
