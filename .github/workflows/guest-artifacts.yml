@@ -1,0 +1,49 @@
+name: Guest artifacts
+
+# Build the container-in-VM guest on a native, case-sensitive Linux runner.
+# The Determinate macOS Linux builder exposes case-hack store names through
+# virtiofs, which can poison a NixOS disk image (NixOS/nix#9319).
+
+on:
+  push:
+    branches: [development, main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - dependencies/containers/container-in-vm/**
+      - .github/workflows/guest-artifacts.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  container-guest-artifacts:
+    name: wawona-container-guest-artifacts (aarch64-linux)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          determinate: true
+          extra-conf: |
+            extra-system-features = kvm
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Build container guest artifacts
+        run: nix build .#packages.aarch64-linux.wawona-container-guest-artifacts -L
+
+      - name: Stage artifacts
+        run: |
+          mkdir -p dist/wawona-container-guest
+          cp -RL result/. dist/wawona-container-guest/
+          chmod -R u+w dist/wawona-container-guest
+          ls -lh dist/wawona-container-guest
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wawona-container-guest-artifacts
+          path: dist/wawona-container-guest
+          if-no-files-found: error

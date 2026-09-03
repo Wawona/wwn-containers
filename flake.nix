@@ -66,6 +66,12 @@
             if pkgs.stdenv.hostPlatform.isLinux
             then pkgs.callPackage ./dependencies/containers/images/desktop-image.nix { }
             else null;
+          wawona-container-guest-artifacts =
+            if pkgs.stdenv.hostPlatform.isLinux
+            then pkgs.callPackage "${wwn-vms}/dependencies/vms/mobile/guest-artifacts.nix" {
+              mobileGuest = self.nixosConfigurations.wawona-container-guest;
+            }
+            else null;
         in {
           inherit wwn-oci;
           default = wwn-oci;
@@ -76,7 +82,7 @@
             inherit wwn-oci wwn-containerd;
           };
         } // (pkgs.lib.optionalAttrs (wawona-container-desktop != null) {
-          inherit wawona-container-desktop;
+          inherit wawona-container-desktop wawona-container-guest-artifacts;
         }) // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           # macOS execution backend (Apple Containerization.framework). Built
           # at nix build time; no runtime Swift compile (see wwn-containerd.nix).
