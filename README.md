@@ -21,7 +21,7 @@ Two layers:
      each container in a lightweight VM (`vminitd`, gRPC over vsock). Fallback:
      container-in-`wwn-vms` NixOS VM.
    - **iOS / iPadOS**: **Mode A** container-in-VM on jitless `wwn-vms`; **Mode B**
-     (Sileo Mode B IPA only) container-in-VM on JIT UTM — see
+     (TrollStore `.tipa` and Sileo) container-in-VM on JIT UTM. See
      [`docs/MODE-A-B.md`](docs/MODE-A-B.md). Never ship Mode B in App Store.
    - **Android**: container-in-VM (QEMU) for full isolation, plus a rootless
      **proot / user-namespace** backend (Termux-style, no root, jitless) for
@@ -182,11 +182,12 @@ alone.
 
 `dependencies/containers/container-in-vm/guest-module.nix` extends the `wwn-vms`
 mobile NixOS guest with an in-guest OCI runtime (crun/podman). The host shares an
-OCI bundle (produced by `wwn-oci`) into the guest over virtiofs; the guest runs
-it with `crun` against a headless cage compositor whose framebuffer waypipe
-streams to Wawona over vsock. Exposed as `nixosConfigurations.wawona-container-guest`.
-This is the execution backend for iOS/iPadOS/visionOS/tvOS (QEMU-TCTI) and one of
-the two Android paths.
+OCI bundle (produced by `wwn-oci`) into the guest over 9p/virtiofs. The guest
+runs its Wayland client with `crun` as the command behind waypipe, which streams
+directly to Wawona over vsock. Exposed as
+`nixosConfigurations.wawona-container-guest`.
+This is the execution backend for iOS/iPadOS and one of the Android paths.
+VM/container machine kinds remain forbidden on tvOS, watchOS, and visionOS.
 
 ## Native `container` CLI (scaffold)
 
