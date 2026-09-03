@@ -1,18 +1,14 @@
-# NixOS guest module: run an OCI rootfs inside a wwn-vms guest with crun/podman,
-# surfacing the container's Wayland session to the host (Wawona) over
-# vsock + waypipe. This is the wwn-containers execution backend for every target
-# that has no native container runtime but can run a VM (iOS/iPadOS/visionOS/
-# tvOS via QEMU-TCTI, Android via QEMU/AVF).
+# NixOS guest module: run an OCI rootfs inside a wwn-vms guest with crun,
+# surfacing the container's Wayland client to Wawona over vsock + waypipe.
+# This backend is allowed on iOS/iPadOS, Android, macOS, and Linux. VM and
+# container machine kinds remain forbidden on tvOS, watchOS, and visionOS.
 #
 # Topology:
-#   host (Wawona)  <-- vsock+waypipe --  guest cage compositor  <-- wayland --  OCI container app
+#   host Wawona compositor <- vsock + waypipe <- OCI Wayland client
 #
 # The OCI bundle (rootfs + config.json, produced by the Rust `wwn-oci` core on
 # the host) is shared into the guest read-only over 9p (QEMU `-virtfs` mount_tag
 # `oci-bundle`; Linux hosts may use virtiofs with the same tag).
-# The guest runs it with crun against a shared XDG_RUNTIME_DIR so the container's
-# Wayland client reaches the guest compositor, whose framebuffer waypipe streams
-# to the host.
 { config, pkgs, lib, ... }:
 
 let
@@ -21,12 +17,10 @@ let
   bundleMount = "/run/wawona/oci-bundle";
 in
 {
-  # Rootless OCI execution stack in-guest.
-  virtualisation.podman = {
-    enable = true;
-    defaultNetwork.settings.dns_enabled = true;
-  };
-  environment.systemPackages = with pkgs; [ crun podman waypipe cage foot ];
+  # The base mobile guest starts Foot. A container guest replaces that service
+  # with the OCI process, so only one waypipe endpoint owns the vsock port.
+  systemd.services.wawona-session.enable = lib.mkForce false;
+  environment.systemPackages = with pkgs; [ crun waypipe ];
 
   # Mount the host-provided OCI bundle. Prefer virtiofs (Linux hosts); fall
   # back to 9p (QEMU `-virtfs`, iOS/macOS TCTI/HVF) with the same mount_tag.
@@ -38,43 +32,23 @@ in
     options = [ "trans=virtio" "version=9p2000.L" "ro" "nofail" ];
   };
 
-  # 1) Headless compositor whose output is streamed to the host by waypipe.
-  systemd.services.wawona-container-compositor = {
-    description = "Wawona in-guest Wayland compositor (waypipe -> host over vsock)";
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      User = "wawona";
-      Restart = "always";
-      RestartSec = "2s";
-    };
-    environment = {
-      XDG_RUNTIME_DIR = "/run/user/1000";
-      WLR_BACKENDS = "headless";
-      WLR_RENDERER = "pixman";
-      WLR_NO_HARDWARE_CURSORS = "1";
-    };
-    script = ''
-      mkdir -p "$XDG_RUNTIME_DIR"
-      exec ${pkgs.waypipe}/bin/waypipe --vsock -s ${toString vsockPort} server -- \
-        ${pkgs.cage}/bin/cage -- ${pkgs.foot}/bin/foot
-    '';
-  };
-
-  # 2) Run the OCI container against the shared compositor socket. crun executes
-  # the bundle; WAYLAND_DISPLAY/XDG_RUNTIME_DIR point the container's client at
-  # the guest compositor above.
+  # Stage a writable runtime bundle over the read-only shared rootfs, then make
+  # the OCI process the command launched by waypipe. The container therefore
+  # speaks Wayland directly to Wawona and does not gain a substitute compositor.
   systemd.services.wawona-container = {
-    description = "Run the OCI container bundle (crun) inside the guest";
+    description = "Run the OCI Wayland client and forward it to Wawona";
     wantedBy = [ "multi-user.target" ];
-    after = [ "wawona-container-compositor.service" ];
-    requires = [ "wawona-container-compositor.service" ];
+    after = [ "local-fs.target" ];
+    unitConfig.RequiresMountsFor = bundleMount;
     serviceConfig = {
       Restart = "on-failure";
       RestartSec = "3s";
+      RuntimeDirectory = "wawona-container";
+      StandardOutput = "journal+console";
+      StandardError = "journal+console";
     };
     environment = {
       XDG_RUNTIME_DIR = "/run/user/1000";
-      WAYLAND_DISPLAY = "wayland-0";
     };
     script = ''
       set -euo pipefail
@@ -82,11 +56,24 @@ in
         echo "wawona-container: no OCI bundle at ${bundleMount} (share it from the host)" >&2
         exit 1
       fi
-      # Stage a writable bundle (rootfs shared ro); crun needs a writable dir.
-      work=/run/wawona/oci-run
-      mkdir -p "$work"
-      ${pkgs.util-linux}/bin/mount --bind "${bundleMount}" "$work" 2>/dev/null || cp -a "${bundleMount}/." "$work/"
-      exec ${pkgs.crun}/bin/crun run --bundle "$work" wawona-oci
+      work=/run/wawona-container/bundle
+      upper=/run/wawona-container/upper
+      overlay_work=/run/wawona-container/overlay-work
+      mkdir -p "$work/rootfs" "$upper" "$overlay_work" "$XDG_RUNTIME_DIR"
+      cp "${bundleMount}/config.json" "$work/config.json"
+      if ! ${pkgs.util-linux}/bin/mount -t overlay overlay \
+        -o "lowerdir=${bundleMount}/rootfs,upperdir=$upper,workdir=$overlay_work" \
+        "$work/rootfs"; then
+        echo "wawona-container: overlay mount failed" >&2
+        exit 1
+      fi
+      echo "READY bundle=${bundleMount} transport=vsock port=${toString vsockPort}" >&2
+      exec ${pkgs.waypipe}/bin/waypipe --vsock -s ${toString vsockPort} server -- \
+        ${pkgs.crun}/bin/crun run --bundle "$work" wawona-oci
+    '';
+    postStop = ''
+      ${pkgs.crun}/bin/crun delete --force wawona-oci >/dev/null 2>&1 || true
+      echo "STOPPED" >&2
     '';
   };
 }
