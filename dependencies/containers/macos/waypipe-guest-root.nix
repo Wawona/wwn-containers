@@ -8,6 +8,8 @@
   lib,
   waypipe,
   patchelf ? pkgs.patchelf,
+  vulkan-loader ? null,
+  mesa ? null,
 }:
 
 let
